@@ -12,7 +12,7 @@ import {
   type Query,
   type SortKey,
 } from './lib/search';
-import { mergeCatalogues } from './lib/catalogue';
+import { KIND_LABEL, mergeCatalogues } from './lib/catalogue';
 import { PROVIDERS, PROVIDER_IDS } from './lib/providers/registry';
 import type { Catalogue } from './lib/types';
 
@@ -21,6 +21,12 @@ import type { Catalogue } from './lib/types';
 const Reader = lazy(() =>
   import('./components/Reader').then((m) => ({ default: m.Reader })),
 );
+
+async function loadCatalogue(name: string): Promise<Catalogue> {
+  const res = await fetch(`${import.meta.env.BASE_URL}${name}`);
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
 
 function folioFromParams(params: URLSearchParams): number | null {
   const n = Number(params.get('p'));
@@ -34,7 +40,10 @@ const SEFARIA_SITE = 'https://www.sefaria.org';
 const CC_BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
 
 export function App() {
-  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [parts, setParts] = useState<Catalogue[] | null>(null);
+  /** Deferred catalogue files fetched since, keyed by file name. */
+  const [extras, setExtras] = useState<{ file: string; part: Catalogue }[]>([]);
+  const [loadingExtra, setLoadingExtra] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [query, setQuery] = useState<Query>(() =>
     paramsToQuery(new URLSearchParams(window.location.search)),
@@ -53,19 +62,19 @@ export function App() {
   );
 
   useEffect(() => {
-    // One file per library, merged here: they refresh on separate schedules,
-    // and a reader who only wants one of them still pays for the other's rows
-    // either way, so there is nothing to gain from splitting the fetch further.
-    const load = async (name: string): Promise<Catalogue> => {
-      const res = await fetch(`${import.meta.env.BASE_URL}${name}`);
-      if (!res.ok) throw new Error(String(res.status));
-      return res.json();
-    };
-
-    Promise.all(PROVIDER_IDS.map((id) => load(PROVIDERS[id].catalogue)))
-      .then((parts) => setCatalogue(mergeCatalogues(parts)))
+    // One file per library, merged here: they refresh on separate schedules.
+    Promise.all(PROVIDER_IDS.map((id) => loadCatalogue(PROVIDERS[id].catalogue)))
+      .then(setParts)
       .catch(() => setLoadError('טעינת רשימת הספרים נכשלה.'));
   }, []);
+
+  const loadedFiles = useMemo(() => new Set(extras.map((e) => e.file)), [extras]);
+
+  const catalogue = useMemo(
+    () =>
+      parts ? mergeCatalogues([...parts, ...extras.map((e) => e.part)], loadedFiles) : null,
+    [parts, extras, loadedFiles],
+  );
 
   // Back, forward and any other outside change to the URL.
   useEffect(() => {
@@ -99,10 +108,28 @@ export function App() {
     [catalogue, readingId],
   );
 
-  // Drop an id that matches nothing, so the URL does not keep a dead param.
+  const pending = catalogue?.deferred ?? [];
+  // A link may point at a commentary, which is not in the first load.
+  const unresolvedRead = readingId !== null && catalogue !== null && !reading;
+  const wantsDeferred = query.kinds.includes(KIND_LABEL.commentary);
+
   useEffect(() => {
-    if (catalogue && readingId && !reading) setReadingId(null);
-  }, [catalogue, readingId, reading]);
+    if (pending.length === 0 || loadingExtra) return;
+    if (!wantsDeferred && !unresolvedRead) return;
+    setLoadingExtra(true);
+    Promise.all(pending.map(async (d) => ({ file: d.file, part: await loadCatalogue(d.file) })))
+      .then((loaded) => setExtras((prev) => [...prev, ...loaded]))
+      .catch(() => setLoadError('טעינת הפירושים נכשלה.'))
+      .finally(() => setLoadingExtra(false));
+  }, [pending, wantsDeferred, unresolvedRead, loadingExtra]);
+
+  // Drop an id that matches nothing — but only once there is nothing left to
+  // fetch, or a link to a commentary would be discarded before it arrived.
+  useEffect(() => {
+    if (catalogue && readingId && !reading && pending.length === 0 && !loadingExtra) {
+      setReadingId(null);
+    }
+  }, [catalogue, readingId, reading, pending.length, loadingExtra]);
 
   const subs = useMemo(
     () => (catalogue ? availableSubcategories(catalogue.books, query) : []),
@@ -145,8 +172,15 @@ export function App() {
           <section>
             <div className="toolbar">
               <span className="result-count">
-                {results.length.toLocaleString('he-IL')} ספרים
-                {isActive(query) && ` מתוך ${catalogue.facets.total.toLocaleString('he-IL')}`}
+                {loadingExtra ? (
+                  'טוען פירושים…'
+                ) : (
+                  <>
+                    {results.length.toLocaleString('he-IL')} ספרים
+                    {isActive(query) &&
+                      ` מתוך ${catalogue.facets.total.toLocaleString('he-IL')}`}
+                  </>
+                )}
               </span>
               {isActive(query) && (
                 <button type="button" className="link-button" onClick={() => setQuery(EMPTY_QUERY)}>

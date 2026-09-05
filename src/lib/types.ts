@@ -54,9 +54,22 @@ export interface Facets {
   fetchedAt: string;
 }
 
+/**
+ * Entries a catalogue file describes but does not carry, to be fetched only if
+ * a reader asks for them. Sefaria's commentaries are 83% of its shelf and most
+ * visitors never open one, so they are not worth a slow first paint.
+ */
+export interface Deferred {
+  /** Catalogue file under public/ holding them. */
+  file: string;
+  kind: BookKind;
+  count: number;
+}
+
 export interface Catalogue {
   facets: Facets;
   books: Book[];
+  deferred?: Deferred[];
 }
 
 import type { Attribution } from './attribution';

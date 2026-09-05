@@ -1,5 +1,6 @@
+import { weaveCommentary } from './weave';
 import { describe, expect, it } from 'vitest';
-import { buildSefariaDoc, weaveCommentary } from './sefariaDoc';
+import { buildSefariaDoc } from './sefariaDoc';
 import { combinedLicense, licenseFor, sefariaAttribution } from './attribution';
 import { hasUnsupportedMarks, stripUnsupportedMarks } from './hebrew';
 import { blockText } from './parseOcr';

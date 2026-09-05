@@ -89,3 +89,41 @@ describe('filtering by library', () => {
     expect(paramsToQuery(queryToParams(query)).sources).toEqual(query.sources);
   });
 });
+
+describe('catalogues that defer part of their shelf', () => {
+  const base: Catalogue = {
+    facets: { categories: [], subcategories: [], total: 1, fetchedAt: '2026-09-05' },
+    books: [makeBook({ id: 'sefaria:x', provider: 'sefaria', kind: 'book' })],
+    deferred: [{ file: 'commentaries.json', kind: 'commentary', count: 5416 }],
+  };
+
+  const commentaries: Catalogue = {
+    facets: { categories: [], subcategories: [], total: 1, fetchedAt: '2026-09-05' },
+    books: [makeBook({ id: 'sefaria:c', provider: 'sefaria', kind: 'commentary' })],
+  };
+
+  it('counts what has not been fetched, so a reader can ask for it', () => {
+    // The commentary facet has to be visible before the file is loaded, or
+    // there is no way to opt in to loading it.
+    const merged = mergeCatalogues([base]);
+    const kinds = Object.fromEntries(merged.facets.kinds!.map((k) => [k.name, k.count]));
+    expect(kinds['פירושים']).toBe(5416);
+    expect(merged.facets.total).toBe(5417);
+    expect(merged.books).toHaveLength(1);
+  });
+
+  it('reports what is still outstanding', () => {
+    expect(mergeCatalogues([base]).deferred).toEqual([
+      { file: 'commentaries.json', kind: 'commentary', count: 5416 },
+    ]);
+  });
+
+  it('stops counting a file twice once it has been fetched', () => {
+    const merged = mergeCatalogues([base, commentaries], new Set(['commentaries.json']));
+    const kinds = Object.fromEntries(merged.facets.kinds!.map((k) => [k.name, k.count]));
+    // The real row, not the promised one.
+    expect(kinds['פירושים']).toBe(1);
+    expect(merged.facets.total).toBe(2);
+    expect(merged.deferred).toEqual([]);
+  });
+});

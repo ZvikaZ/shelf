@@ -231,7 +231,31 @@ const facets = {
 };
 
 await mkdir('public', { recursive: true });
-await writeFile('public/books-sefaria.json', JSON.stringify({ facets, books }));
+
+// Commentaries are 83% of this shelf and most visitors never open one, so they
+// go in their own file. The main catalogue records that they exist and how
+// many, which is enough for the app to offer them and fetch them on demand.
+const COMMENTARY_FILE = 'books-sefaria-commentaries.json';
+const shelf = books.filter((b) => b.kind !== 'commentary');
+const commentaries = books.filter((b) => b.kind === 'commentary');
+
+await writeFile(
+  'public/books-sefaria.json',
+  JSON.stringify({
+    facets: { ...facets, total: shelf.length },
+    books: shelf,
+    deferred: commentaries.length
+      ? [{ file: COMMENTARY_FILE, kind: 'commentary', count: commentaries.length }]
+      : [],
+  }),
+);
+await writeFile(
+  `public/${COMMENTARY_FILE}`,
+  JSON.stringify({
+    facets: { ...facets, total: commentaries.length },
+    books: commentaries,
+  }),
+);
 
 const have = (fn) => books.filter(fn).length;
 console.log(

@@ -319,3 +319,86 @@ describe('the reader', () => {
     expect(screen.getByText('אלפי מנשה חלק א')).toBeInTheDocument();
   });
 });
+
+describe('commentaries, fetched only when wanted', () => {
+  const shelf = {
+    facets: { categories: [], subcategories: [], total: 1, fetchedAt: '2026-09-05' },
+    books: [
+      makeBook({
+        id: 'sefaria:base',
+        provider: 'sefaria',
+        kind: 'book',
+        title: 'בראשית',
+        key: 'בראשית',
+      }),
+    ],
+    deferred: [{ file: 'books-sefaria-commentaries.json', kind: 'commentary', count: 5416 }],
+  };
+  const commentaries = {
+    facets: { categories: [], subcategories: [], total: 1, fetchedAt: '2026-09-05' },
+    books: [
+      makeBook({
+        id: 'sefaria:rashi',
+        provider: 'sefaria',
+        kind: 'commentary',
+        title: 'רש״י על בראשית',
+        key: 'רשי על בראשית',
+      }),
+    ],
+  };
+
+  function mockSplit() {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        const name = String(url);
+        calls.push(name);
+        const body = name.includes('commentaries')
+          ? commentaries
+          : name.includes('sefaria')
+            ? shelf
+            : catalogue;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+      }),
+    );
+    return calls;
+  }
+
+  it('leaves the commentary file alone on a normal visit', async () => {
+    const calls = mockSplit();
+    render(<App />);
+    await screen.findByText('אלפי מנשה חלק א');
+    // 5,416 rows nobody asked for is most of the download.
+    expect(calls.some((c) => c.includes('commentaries'))).toBe(false);
+  });
+
+  it('still offers them, counted, before they are loaded', async () => {
+    mockSplit();
+    render(<App />);
+    await screen.findByText('אלפי מנשה חלק א');
+    expect(screen.getByRole('checkbox', { name: /פירושים/ })).toBeInTheDocument();
+    expect(screen.getByText(/5,416|5416/)).toBeInTheDocument();
+  });
+
+  it('fetches them once the reader asks, and shows them', async () => {
+    const user = userEvent.setup();
+    const calls = mockSplit();
+    render(<App />);
+    await screen.findByText('אלפי מנשה חלק א');
+
+    await user.click(screen.getByRole('checkbox', { name: /פירושים/ }));
+
+    expect(await screen.findByText('רש״י על בראשית')).toBeInTheDocument();
+    expect(calls.filter((c) => c.includes('commentaries'))).toHaveLength(1);
+  });
+
+  it('resolves a link to a commentary that the first load did not carry', async () => {
+    mockSplit();
+    window.history.replaceState(null, '', '/?read=sefaria:rashi');
+    render(<App />);
+    // The id must survive long enough for the deferred file to arrive.
+    expect(await screen.findByText('פתח דבר לספר')).toBeInTheDocument();
+    expect(window.location.search).toContain('read=sefaria%3Arashi');
+  });
+});

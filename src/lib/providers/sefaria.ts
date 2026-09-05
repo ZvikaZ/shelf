@@ -1,5 +1,6 @@
 import { combinedLicense, sefariaAttribution } from '../attribution';
-import { buildSefariaDoc, weaveCommentary, HE_SECTION, type TextNode } from '../sefariaDoc';
+import { buildSefariaDoc, HE_SECTION, type TextNode } from '../sefariaDoc';
+import { weaveCommentary } from '../weave';
 import type { BookDoc } from '../types';
 import type { LoadBook } from './types';
 
