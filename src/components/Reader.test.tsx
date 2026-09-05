@@ -220,6 +220,23 @@ describe('reader navigation and tools', () => {
     expect(await screen.findByText('הקובץ ירד.')).toBeInTheDocument();
   });
 
+  it('will not offer a download of an edition under copyright', async () => {
+    // Sefaria carries editions that are not ours to hand out. The button has to
+    // say so rather than fail once the reader has waited for a build.
+    getDoc.mockResolvedValue({
+      ...doc,
+      attribution: {
+        ...doc.attribution,
+        license: { name: 'Copyright: somebody', exportable: false },
+      },
+    });
+    await open();
+
+    const download = screen.getByRole('button', { name: /הורדה/ });
+    expect(download).toBeDisabled();
+    expect(download).toHaveAttribute('title', expect.stringContaining('זכויות יוצרים'));
+  });
+
   it('reports a failed download rather than failing silently', async () => {
     exportBook.mockRejectedValue(new Error('ההמרה נכשלה (503)'));
     const user = userEvent.setup();

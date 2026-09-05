@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { makeBook, makeDoc } from './test/fixtures';
+import { PROVIDERS, PROVIDER_IDS } from './lib/providers/registry';
 import type { Catalogue } from './lib/types';
 
 const exportBook = vi.hoisted(() => vi.fn());
@@ -400,5 +401,29 @@ describe('commentaries, fetched only when wanted', () => {
     // The id must survive long enough for the deferred file to arrive.
     expect(await screen.findByText('פתח דבר לספר')).toBeInTheDocument();
     expect(window.location.search).toContain('read=sefaria%3Arashi');
+  });
+});
+
+describe('crediting the libraries', () => {
+  it('names and links every library the app draws from', async () => {
+    // The footer once credited Dicta alone and claimed one licence for the
+    // whole shelf. Driving it from the registry means a library added later
+    // cannot be left uncredited without this failing.
+    await renderApp();
+    const footer = document.querySelector('.site-foot')!;
+    for (const id of PROVIDER_IDS) {
+      const link = within(footer as HTMLElement).getByRole('link', {
+        name: PROVIDERS[id].label,
+      });
+      expect(link).toHaveAttribute('href', PROVIDERS[id].site);
+    }
+  });
+
+  it('does not claim a single licence for texts that carry their own', async () => {
+    // Sefaria's licence belongs to the edition, so naming one here was untrue.
+    await renderApp();
+    const footer = document.querySelector('.site-foot')!;
+    expect(footer.textContent).not.toMatch(/CC BY-SA/);
+    expect(footer.textContent).toMatch(/הרישיון משתנה/);
   });
 });

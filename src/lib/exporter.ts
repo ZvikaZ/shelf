@@ -48,6 +48,14 @@ export async function exportBook(
 ): Promise<void> {
   const doc = await getDoc(book, onProgress);
 
+  // Enforced here, not only where the buttons are drawn. The reader disables
+  // the menu and the static export skips these, but the rule belongs with the
+  // work: an edition naming a rights holder is not ours to hand out, and a
+  // future caller should not have to know that.
+  if (!doc.attribution.license.exportable) {
+    throw new Error('המהדורה הזו מוגנת בזכויות יוצרים ואינה ניתנת להורדה.');
+  }
+
   if (format === 'pdf') {
     const fonts = await pdfFonts();
     const bytes = await buildPdf(book, doc, fonts, (ratio) => onProgress?.('build', ratio));
