@@ -34,10 +34,7 @@ function folioFromParams(params: URLSearchParams): number | null {
 }
 
 const DICTA_SITE = 'https://library.dicta.org.il';
-const DICTA_REPO =
-  'https://github.com/Dicta-Israel-Center-for-Text-Analysis/Dicta-Library-Download';
 const SEFARIA_SITE = 'https://www.sefaria.org';
-const CC_BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
 
 export function App() {
   const [parts, setParts] = useState<Catalogue[] | null>(null);
@@ -227,28 +224,25 @@ export function App() {
       )}
 
       <footer className="site-foot">
+        {/* Built from the provider registry, so adding a library credits it
+            here too. The licence is deliberately not named: Sefaria's varies by
+            edition, and claiming one for the whole shelf was untrue. */}
         <p style={{ margin: '0 0 6px' }}>
-          הטקסטים והנתונים הם מיזם של{' '}
-          <a href={DICTA_SITE} target="_blank" rel="noreferrer">
-            דיקטה — המרכז הישראלי לניתוח טקסטים
-          </a>
-          , המנגיש טקסטים תורניים לציבור ללא עלות. אתר זה הוא ממשק הורדה בלבד ואינו קשור רשמית
-          לדיקטה.
+          הטקסטים באדיבות{' '}
+          {PROVIDER_IDS.map((id, i) => (
+            <span key={id}>
+              {i > 0 && (i === PROVIDER_IDS.length - 1 ? ' ו' : ' · ')}
+              <a href={PROVIDERS[id].site} target="_blank" rel="noreferrer">
+                {PROVIDERS[id].label}
+              </a>
+            </span>
+          ))}
+          {' '}— מיזמים המנגישים טקסטים תורניים לציבור ללא עלות. תודה על העבודה ועל שחרור
+          הטקסטים לשימוש חופשי.
         </p>
         <p style={{ margin: 0 }}>
-          נתונים:{' '}
-          <a href={DICTA_REPO} target="_blank" rel="noreferrer">
-            Dicta-Library-Download
-          </a>{' '}
-          ·{' '}
-          <a href={SEFARIA_SITE} target="_blank" rel="noreferrer">
-            Sefaria
-          </a>{' '}
-          · רישיון{' '}
-          <a href={CC_BY_SA} target="_blank" rel="noreferrer">
-            CC BY-SA 4.0
-          </a>
-          {catalogue && ` · הקטלוג עודכן ${catalogue.facets.fetchedAt}`}
+          אתר זה הוא ממשק עיון והורדה בלבד, ואינו קשור רשמית לאף אחד מהם. הרישיון משתנה לפי
+          הספר והמהדורה, ומצוין בכל ספר ובכל קובץ שמופק ממנו.
         </p>
       </footer>
     </>

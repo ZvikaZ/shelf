@@ -513,16 +513,23 @@ button, input, select { font: inherit; color: inherit; }
 @media (width <= 780px) {
   .rd-toc { box-shadow: -12px 0 30px rgb(0 0 0 / 18%); }
 
+  /* Sticky, not merely first: a contents list runs to hundreds of entries, and
+     a close control that scrolls away strands the reader behind the drawer. */
   .rd-toc-close {
     display: block;
+    position: sticky;
+    top: 0;
+    z-index: 1;
     margin-inline-start: auto;
-    background: none;
+    background: var(--card);
     border: none;
-    font-size: 22px;
+    border-radius: 6px;
+    font-size: 24px;
     line-height: 1;
-    padding: 2px 8px;
+    padding: 4px 12px;
     cursor: pointer;
-    color: var(--ink-faint);
+    color: var(--ink-soft);
+    box-shadow: 0 4px 10px var(--card);
   }
 }
 
