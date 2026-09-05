@@ -84,7 +84,9 @@ export const DICTA_ATTRIBUTION: Attribution = {
   about:
     'מיזם של דיקטה, המרכז הישראלי לניתוח טקסטים, המנגיש טקסטים תורניים לציבור ' +
     'באמצעות זיהוי תווים אוטומטי. תודה על העבודה ועל השחרור לשימוש חופשי.',
-  provenance: 'הטקסט הופק בסריקה ובזיהוי אוטומטי (OCR) וייתכנו בו שיבושים. ללא ניקוד.',
+  // Dicta's own caveat, from their README: the processes are automatic, so the
+  // text may carry errors. Kept because they say it, not because we assume it.
+  provenance: 'הטקסט הופק בסריקה ובזיהוי אוטומטי (OCR) וייתכנו בו שיבושים.',
   license: licenseFor('CC-BY-SA'),
   dataLabel: 'Dicta-Library-Download',
   dataUrl: DICTA_REPO,

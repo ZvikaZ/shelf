@@ -439,16 +439,19 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
                 .filter(Boolean)
                 .join(' · ')}
             </p>
-            {book.titleEn && <p className="rd-front-meta">{book.titleEn}</p>}
-            {/* Which library, and how the text was produced. Both were only in
-                the colophon, a thousand blocks below — but an OCR caveat is
-                worth having before you read rather than after, and with more
-                than one library the source is no longer a given. Every export
-                states both on its title page; this brings the reader level. */}
+            {/* The library gets its full name and a link, not a facet label:
+                these texts are somebody's work and the credit should read like
+                one. The caveat below it is the library's own wording. */}
             <p className="rd-front-source">
-              {providerLabel(book.provider)}
-              {doc && ` · ${doc.attribution.provenance}`}
+              {doc ? (
+                <a href={doc.attribution.libraryUrl} target="_blank" rel="noreferrer">
+                  {doc.attribution.library}
+                </a>
+              ) : (
+                providerLabel(book.provider)
+              )}
             </p>
+            {doc && <p className="rd-front-note">{doc.attribution.provenance}</p>}
           </header>
 
           {error && <p className="rd-msg rd-error">{error}</p>}
