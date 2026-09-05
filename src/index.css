@@ -559,3 +559,13 @@ button, input, select { font: inherit; color: inherit; }
   padding-inline-start: 0.8em;
   color: var(--ink-soft);
 }
+
+.rd-front-source {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin: 0 0 10px;
+  max-width: 46ch;
+  margin-inline: auto;
+  line-height: 1.5;
+}

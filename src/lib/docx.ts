@@ -142,6 +142,13 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
         doc.attribution.about,
       { small: true },
     ),
+    ...(doc.attribution.dataLabel && doc.attribution.dataUrl
+      ? [
+          rtl(`מקור הנתונים: ${doc.attribution.dataLabel} — ${doc.attribution.dataUrl}`, {
+            small: true,
+          }),
+        ]
+      : []),
     rtl(
       `רישיון: ${doc.attribution.license.name}` +
         (doc.attribution.license.url ? ` — ${doc.attribution.license.url}` : ''),

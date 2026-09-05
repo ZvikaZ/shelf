@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDoc } from '../lib/bookCache';
 import { findMatches, segment, type Match } from '../lib/findInText';
 import { FORMAT_HINT, FORMAT_LABEL } from '../lib/formats';
+import { providerLabel } from '../lib/providers/registry';
 import { blockText } from '../lib/parseOcr';
 import { tocEntries } from '../lib/toc';
 import { blockLabel, type Block, type Book, type BookDoc, type ExportFormat } from '../lib/types';
@@ -428,11 +429,26 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
             <h1>{book.title}</h1>
             {book.author && <p className="rd-front-author">{book.author}</p>}
             <p className="rd-front-meta">
-              {[book.place, book.year, book.category, book.subcategory]
+              {[
+                book.place,
+                book.year,
+                book.category,
+                book.subcategory,
+                doc ? `${doc.pageCount} עמודים` : null,
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
             {book.titleEn && <p className="rd-front-meta">{book.titleEn}</p>}
+            {/* Which library, and how the text was produced. Both were only in
+                the colophon, a thousand blocks below — but an OCR caveat is
+                worth having before you read rather than after, and with more
+                than one library the source is no longer a given. Every export
+                states both on its title page; this brings the reader level. */}
+            <p className="rd-front-source">
+              {providerLabel(book.provider)}
+              {doc && ` · ${doc.attribution.provenance}`}
+            </p>
           </header>
 
           {error && <p className="rd-msg rd-error">{error}</p>}

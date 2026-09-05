@@ -237,6 +237,16 @@ describe('reader navigation and tools', () => {
     expect(screen.getByRole('button', { name: 'חזרה לקטלוג' })).toHaveTextContent('→');
   });
 
+  it('names the library and how the text was made, up front', async () => {
+    // Both were only in the colophon, past the whole book. With more than one
+    // library the source is no longer a given, and an OCR caveat is worth
+    // having before reading rather than after.
+    await open();
+    const front = document.querySelector('.rd-front')!;
+    expect(front.textContent).toContain('דיקטה');
+    expect(front.textContent).toMatch(/סריקה|זיהוי|OCR/);
+  });
+
   it('shows which folio is on screen', async () => {
     await open();
     expect(screen.getByText(/^דף /)).toBeInTheDocument();
