@@ -72,7 +72,14 @@ jobs:
 
       - name: Build OPDS feeds
         continue-on-error: true
-        run: node scripts/build-opds.mjs --base-url=https://zvikaz.github.io/dicta-library-downloader/opds/files/
+        # Derived, not hard-coded: the acquisition links in an OPDS feed are
+        # absolute, and renaming the repository silently pointed every one of
+        # them at a Pages URL that no longer exists.
+        run: |
+          OWNER=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          BASE="https://$OWNER.github.io/${GITHUB_REPOSITORY#*/}/opds/files/"
+          echo "OPDS acquisition base: $BASE"
+          node scripts/build-opds.mjs --base-url="$BASE"
 
       # vite build copies everything under public/ (including opds/, if the
       # steps above produced it) into dist/ automatically.
