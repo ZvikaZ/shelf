@@ -502,7 +502,28 @@ button, input, select { font: inherit; color: inherit; }
   text-align: center;
 }
 
-.rd-toc-close { display: none; }
+/* Sticky, so hundreds of entries cannot scroll the way out off the screen. */
+.rd-toc-close {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 12px;
+  background: var(--card);
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.rd-toc-close:hover { background: var(--accent-soft); color: var(--accent); }
 
 .rd-toc-active > button {
   background: var(--accent-soft);
@@ -511,26 +532,8 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 @media (width <= 780px) {
+  /* Over the text rather than beside it, so it needs to read as a raised panel. */
   .rd-toc { box-shadow: -12px 0 30px rgb(0 0 0 / 18%); }
-
-  /* Sticky, not merely first: a contents list runs to hundreds of entries, and
-     a close control that scrolls away strands the reader behind the drawer. */
-  .rd-toc-close {
-    display: block;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    margin-inline-start: auto;
-    background: var(--card);
-    border: none;
-    border-radius: 6px;
-    font-size: 24px;
-    line-height: 1;
-    padding: 4px 12px;
-    cursor: pointer;
-    color: var(--ink-soft);
-    box-shadow: 0 4px 10px var(--card);
-  }
 }
 
 .rd-status {

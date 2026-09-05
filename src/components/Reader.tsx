@@ -384,13 +384,13 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
       <div className="rd-body">
         {showToc && entries.length > 0 && (
           <nav className="rd-toc" aria-label="תוכן העניינים">
-            <button
-              type="button"
-              className="rd-toc-close"
-              onClick={() => setShowToc(false)}
-              aria-label="סגירת התוכן"
-            >
-              ×
+            {/* The control that dismisses the drawer lives in the drawer, at
+                every width: going up to the toolbar to close what you are
+                looking at is a detour. Labelled, because a lone × at this size
+                reads as decoration. */}
+            <button type="button" className="rd-toc-close" onClick={() => setShowToc(false)}>
+              <span aria-hidden="true">✕</span>
+              סגירת התוכן
             </button>
             <ol>
               {entries.map((e) => (
