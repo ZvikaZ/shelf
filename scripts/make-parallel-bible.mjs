@@ -106,11 +106,15 @@ function flowVerses(blocks) {
       .map((s) => s.text)
       .join(' ')
       .trim();
-    const piece = num ? `${num} ${text}` : text;
+    // The number is its own span so the renderer can set it small, the way a
+    // printed Bible does — it is an address, not part of the sentence.
+    const parts = num
+      ? [{ text: num, bold: false, small: true }, { text, bold: false }]
+      : [{ text, bold: false }];
     if (current) {
-      current.spans.push({ text: piece, bold: false });
+      current.spans.push(...parts);
     } else {
-      current = { kind: 'para', page: b.page, label: b.label, spans: [{ text: piece, bold: false }] };
+      current = { kind: 'para', page: b.page, label: b.label, spans: parts };
       out.push(current);
     }
   }

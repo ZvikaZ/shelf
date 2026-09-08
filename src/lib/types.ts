@@ -80,6 +80,8 @@ export type BlockKind = 'heading' | 'para';
 export interface Span {
   text: string;
   bold: boolean;
+  /** Set smaller than the surrounding text — a verse number, say. */
+  small?: boolean;
 }
 
 export interface Block {
