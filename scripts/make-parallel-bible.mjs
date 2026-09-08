@@ -39,10 +39,10 @@ async function loadLib() {
   const entry = join(tmpdir(), `shelf-lib-${Date.now()}.mjs`);
   await build({
     stdin: {
-      contents: `export { buildSefariaDoc } from './src/lib/sefariaDoc';
+      contents: `export { buildSefariaDoc, ARABIC } from './src/lib/sefariaDoc';
 export { weaveParallel, combineDocs } from './src/lib/weave';
 export { sefariaAttribution, combinedLicense } from './src/lib/attribution';
-export { buildPdf } from './src/lib/pdf';`,
+export { buildPdf, ENGLISH_LABELS, HEBREW_LABELS } from './src/lib/pdf';`,
       resolveDir: process.cwd(),
       sourcefile: 'entry.ts',
       loader: 'ts',
@@ -100,8 +100,23 @@ async function fetchVersion(ref, version) {
   };
 }
 
-const { buildSefariaDoc, weaveParallel, combineDocs, sefariaAttribution, combinedLicense, buildPdf } =
-  await loadLib();
+const {
+  buildSefariaDoc,
+  ARABIC,
+  weaveParallel,
+  combineDocs,
+  sefariaAttribution,
+  combinedLicense,
+  buildPdf,
+  ENGLISH_LABELS,
+  HEBREW_LABELS,
+} = await loadLib();
+
+// An English-only volume is numbered in digits and its sections named in
+// English; the defaults are Hebrew because that is what the shelf mostly holds.
+const sectionNames = englishOnly ? {} : undefined;
+const numeral = englishOnly ? ARABIC : undefined;
+const labels = englishOnly ? ENGLISH_LABELS : HEBREW_LABELS;
 
 let titles = await tanakhBooks();
 if (only) titles = titles.filter((t) => t === only);
@@ -139,7 +154,7 @@ for (const [i, title] of titles.entries()) {
       process.exit(1);
     }
     sources.set(enAttr.provenance, enAttr);
-    const enDoc = buildSefariaDoc([en.node], enAttr);
+    const enDoc = buildSefariaDoc([en.node], enAttr, sectionNames, numeral);
     if (englishOnly) {
       // The translation stands on its own: no layer, and no Hebrew beneath it.
       blocks = enDoc.blocks;
@@ -156,19 +171,56 @@ for (const [i, title] of titles.entries()) {
 }
 
 const all = [...sources.values()];
-const attribution = {
-  ...all[0],
-  library: 'ספריא',
-  provenance: all.map((a) => a.provenance).join(' · '),
-  license: combinedLicense(all),
-};
+const attribution = englishOnly
+  ? {
+      ...all[0],
+      library: 'Sefaria',
+      libraryUrl: 'https://www.sefaria.org',
+      about: 'A free library of Jewish texts, offered to the public at no cost.',
+      provenance: `Translation: ${english}.`,
+      dataLabel: undefined,
+      dataUrl: undefined,
+      license: combinedLicense(all),
+    }
+  : {
+      ...all[0],
+      library: 'ספריא',
+      provenance: all.map((a) => a.provenance).join(' · '),
+      license: combinedLicense(all),
+    };
 
 const doc = combineDocs(parts, attribution);
+// The per-part credits are written in Hebrew by sefariaAttribution; in an
+// English volume the single English attribution already says it all.
+if (englishOnly) doc.alsoFrom = [];
 const chars = doc.blocks.reduce((n, b) => n + b.spans.reduce((s, p) => s + p.text.length, 0), 0);
 console.log(`\ncombined: ${doc.blocks.length} blocks · ${(chars / 1e6).toFixed(2)}M characters`);
 console.log(`licence: ${attribution.license.name}`);
 
-const book = {
+const single = titles.length === 1 ? titles[0] : null;
+const book = englishOnly
+  ? {
+      id: 'sefaria:tanakh-english',
+      provider: 'sefaria',
+      kind: 'book',
+      title: single ?? 'The Hebrew Bible',
+      titleEn: null,
+      author: null,
+      authorEn: null,
+      category: 'Bible',
+      categoryEn: 'Bible',
+      subcategory: english,
+      subcategoryEn: english,
+      place: null,
+      placeEn: null,
+      year: null,
+      source: 'Sefaria',
+      reviewed: true,
+      ref: 'Tanakh',
+      sourceUrl: 'https://www.sefaria.org/texts/Tanakh',
+      key: '',
+    }
+  : {
   id: 'sefaria:tanakh-parallel',
   provider: 'sefaria',
   kind: 'book',
@@ -215,26 +267,33 @@ async function font(name) {
 // cantillated text in, and its own Latin is a decent serif, which matters
 // because Cardo loses most of its glyphs when pdf-lib subsets it alongside a
 // second font.
-const fonts = englishOnly
-  ? {
-      regular: await font('Cardo-Regular.ttf'),
-      bold: await font('Cardo-Regular.ttf'),
-    }
-  : {
-      regular: await font('Taamey-Frank/TaameyFrankCLM-Medium.ttf'),
-      bold: await font('Taamey-Frank/TaameyFrankCLM-Bold.ttf'),
-      hasCantillation: true,
-    };
+// Taamey Frank for both: Sefaria pairs it with Cardo for the web, but Cardo
+// renders only a scattering of its glyphs when pdf-lib makes it a document's
+// primary face — it works as a secondary one, which is not a distinction worth
+// building on. Taamey Frank's own Latin is a clean serif and is already proven
+// through this pipeline.
+const fonts = {
+  regular: await font('Taamey-Frank/TaameyFrankCLM-Medium.ttf'),
+  bold: await font('Taamey-Frank/TaameyFrankCLM-Bold.ttf'),
+  hasCantillation: !englishOnly,
+};
 
 let last = -1;
 const started = Date.now();
-const bytes = await buildPdf(book, doc, fonts, (ratio) => {
-  const pct = Math.floor(ratio * 100);
-  if (pct >= last + 10) {
-    last = pct;
-    process.stdout.write(`\r  building PDF ${pct}%`);
-  }
-});
+const bytes = await buildPdf(
+  book,
+  doc,
+  fonts,
+  (ratio) => {
+    const pct = Math.floor(ratio * 100);
+    if (pct >= last + 10) {
+      last = pct;
+      process.stdout.write(`
+  building PDF ${pct}%`);
+    }
+  },
+  labels,
+);
 
 await mkdir('dist-books', { recursive: true });
 await writeFile(outFile, bytes);

@@ -59,9 +59,17 @@ export function talmudAddress(index: number): string {
   return `${hebrewNumber(daf)} ${index % 2 === 0 ? 'ע"א' : 'ע"ב'}`;
 }
 
+/**
+ * How a reference level is numbered. Hebrew books count in letters; an
+ * English-only volume wants ordinary digits, so the formatter is a parameter
+ * rather than a fact of the module.
+ */
+export type Numeral = (n: number) => string;
+export const ARABIC: Numeral = (n) => String(n);
+
 /** The label for one level of a reference, e.g. `ג` or `ה ע"א`. */
-function address(addressType: string, index: number): string {
-  return addressType === 'Talmud' ? talmudAddress(index) : hebrewNumber(index + 1);
+function address(addressType: string, index: number, numeral: Numeral): string {
+  return addressType === 'Talmud' ? talmudAddress(index) : numeral(index + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -297,10 +305,11 @@ function walk(
   cur: Cursor,
   numberSections: boolean,
   sectionNames: Record<string, string>,
+  numeral: Numeral,
 ): void {
   if (!Array.isArray(node)) {
     for (const spans of paragraphs(node)) {
-      cur.blocks.push({ kind: 'para', spans, page: cur.slot, label: labelFor(path, text) });
+      cur.blocks.push({ kind: 'para', spans, page: cur.slot, label: labelFor(path, text, numeral) });
     }
     return;
   }
@@ -312,25 +321,32 @@ function walk(
       cur.slot += 1;
       cur.blocks.push({
         kind: 'heading',
-        spans: [{ text: sectionTitle(text, i, sectionNames), bold: false }],
+        spans: [{ text: sectionTitle(text, i, sectionNames, numeral), bold: false }],
         page: cur.slot,
-        label: labelFor(next, text),
+        label: labelFor(next, text, numeral),
       });
     }
-    walk(child, next, text, cur, numberSections, sectionNames);
+    walk(child, next, text, cur, numberSections, sectionNames, numeral);
   });
 }
 
 /** e.g. `פרק ג` — the section name in Hebrew, with its Hebrew number. */
-function sectionTitle(text: TextNode, index: number, sectionNames: Record<string, string>): string {
+function sectionTitle(
+  text: TextNode,
+  index: number,
+  sectionNames: Record<string, string>,
+  numeral: Numeral,
+): string {
   const raw = text.sectionNames[0];
   const name = sectionNames[raw] ?? raw ?? '';
-  return `${name} ${address(text.addressTypes[0] ?? 'Integer', index)}`.trim();
+  return `${name} ${address(text.addressTypes[0] ?? 'Integer', index, numeral)}`.trim();
 }
 
 /** The citation printed in the margin, e.g. `ג׳:י״ב`. */
-function labelFor(path: number[], text: TextNode): string {
-  return path.map((i, depth) => address(text.addressTypes[depth] ?? 'Integer', i)).join(':');
+function labelFor(path: number[], text: TextNode, numeral: Numeral): string {
+  return path
+    .map((i, depth) => address(text.addressTypes[depth] ?? 'Integer', i, numeral))
+    .join(':');
 }
 
 export const HE_SECTION: Record<string, string> = {
@@ -361,6 +377,7 @@ export function buildSefariaDoc(
   nodes: TextNode[],
   attribution: Attribution,
   sectionNames: Record<string, string> = HE_SECTION,
+  numeral: Numeral = hebrewNumber,
 ): BookDoc {
   const cur: Cursor = { blocks: [], slot: 0 };
 
@@ -390,7 +407,7 @@ export function buildSefariaDoc(
     // numbers collapses the whole section into one undifferentiated block
     // of text. Only suppress numbering when the leaf is both named and flat.
     const numberSections = !(named && node.sectionNames.length <= 1);
-    walk(node.text, [], node, cur, numberSections, sectionNames);
+    walk(node.text, [], node, cur, numberSections, sectionNames, numeral);
   }
 
   return {
