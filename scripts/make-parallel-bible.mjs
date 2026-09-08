@@ -85,6 +85,38 @@ async function tanakhBooks() {
   return out;
 }
 
+/**
+ * Run the verses of a chapter together into one paragraph, numbered inline.
+ *
+ * One block per verse is right for the bilingual edition, where each verse has
+ * its translation beneath it. Set on its own, it breaks continuous prose into a
+ * column of short lines. Headings still separate chapters.
+ */
+function flowVerses(blocks) {
+  const out = [];
+  let current = null;
+  for (const b of blocks) {
+    if (b.kind !== 'para') {
+      out.push(b);
+      current = null;
+      continue;
+    }
+    const num = (b.label ?? '').split(':').pop() ?? '';
+    const text = b.spans
+      .map((s) => s.text)
+      .join(' ')
+      .trim();
+    const piece = num ? `${num} ${text}` : text;
+    if (current) {
+      current.spans.push({ text: piece, bold: false });
+    } else {
+      current = { kind: 'para', page: b.page, label: b.label, spans: [{ text: piece, bold: false }] };
+      out.push(current);
+    }
+  }
+  return out;
+}
+
 async function fetchVersion(ref, version) {
   const res = await getJson(`${API}/v3/texts/${encodeURIComponent(ref)}?version=${encodeURIComponent(version)}`);
   const v = res?.versions?.[0];
@@ -157,8 +189,8 @@ for (const [i, title] of titles.entries()) {
     const enDoc = buildSefariaDoc([en.node], enAttr, sectionNames, numeral);
     if (englishOnly) {
       // The translation stands on its own: no layer, and no Hebrew beneath it.
-      blocks = enDoc.blocks;
-      paired = blocks.length;
+      blocks = flowVerses(enDoc.blocks);
+      paired = enDoc.blocks.length;
       sources.delete(heAttr.provenance);
     } else {
       blocks = weaveParallel(heDoc, enDoc, enAttr.library);
