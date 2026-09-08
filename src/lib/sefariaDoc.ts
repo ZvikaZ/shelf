@@ -321,6 +321,7 @@ function walk(
       cur.slot += 1;
       cur.blocks.push({
         kind: 'heading',
+        level: 3,
         spans: [{ text: sectionTitle(text, i, sectionNames, numeral), bold: false }],
         page: cur.slot,
         label: labelFor(next, text, numeral),

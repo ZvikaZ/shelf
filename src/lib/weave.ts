@@ -102,15 +102,32 @@ export function weaveParallel(base: BookDoc, parallel: BookDoc, layer: string): 
  * and has to keep increasing across the whole document.
  */
 export function combineDocs(
-  parts: { title: string; doc: BookDoc }[],
+  parts: { title: string; doc: BookDoc; section?: string }[],
   attribution: BookDoc['attribution'],
 ): BookDoc {
   const blocks: Block[] = [];
   let offset = 0;
+  let openSection: string | undefined;
 
-  for (const { title, doc } of parts) {
+  for (const { title, doc, section } of parts) {
     const highest = doc.blocks.reduce((n, b) => Math.max(n, b.page), 0);
-    blocks.push({ kind: 'heading', page: offset + 1, spans: [{ text: title, bold: false }] });
+    // A section heading only where the parts are grouped, and only when the
+    // group changes — Torah, then Prophets, then Writings.
+    if (section && section !== openSection) {
+      openSection = section;
+      blocks.push({
+        kind: 'heading',
+        level: 1,
+        page: offset + 1,
+        spans: [{ text: section, bold: false }],
+      });
+    }
+    blocks.push({
+      kind: 'heading',
+      level: 2,
+      page: offset + 1,
+      spans: [{ text: title, bold: false }],
+    });
     for (const b of doc.blocks) blocks.push({ ...b, page: b.page + offset });
     offset += highest + 1;
   }

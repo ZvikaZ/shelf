@@ -68,20 +68,28 @@ async function getJson(url) {
   throw new Error(`giving up on ${url}`);
 }
 
-/** The books of the Tanakh, in order, as Sefaria refs. */
+/**
+ * The books of the Tanakh, in order, with the section each belongs to.
+ *
+ * Only the three canonical sections. Sefaria files Targum and three shelves of
+ * commentary as siblings of them under "Tanakh", and a walk that takes anything
+ * whose first category is Tanakh quietly collects Rashi and Onkelos too.
+ */
+const SECTIONS = ['Torah', 'Prophets', 'Writings'];
+
 async function tanakhBooks() {
   const toc = await getJson(`${API}/index/`);
   const tanakh = toc.find((c) => c.category === 'Tanakh');
   if (!tanakh) throw new Error('Tanakh not found in the Sefaria index');
+
   const out = [];
-  const walk = (nodes) => {
-    for (const n of nodes ?? []) {
-      // Commentary sits under the same tree; only the books themselves here.
-      if (n.contents) walk(n.contents);
-      else if (n.title && n.categories?.[0] === 'Tanakh') out.push(n.title);
+  for (const section of SECTIONS) {
+    const node = tanakh.contents.find((c) => c.category === section);
+    if (!node) throw new Error(`section missing from the index: ${section}`);
+    for (const book of node.contents ?? []) {
+      if (book.title) out.push({ title: book.title, section });
     }
-  };
-  walk(tanakh.contents);
+  }
   return out;
 }
 
@@ -103,7 +111,7 @@ function flowVerses(blocks) {
     }
     const num = (b.label ?? '').split(':').pop() ?? '';
     const text = b.spans
-      .map((s) => s.text)
+      .map((sp) => sp.text)
       .join(' ')
       .trim();
     // The number is its own span so the renderer can set it small, the way a
@@ -119,6 +127,32 @@ function flowVerses(blocks) {
     }
   }
   return out;
+}
+
+/**
+ * A book's chapters as one compact line, set small under its title.
+ *
+ * The printed contents lists books only — chapters there would run to some
+ * twenty-four pages of leader dots — so each book carries its own chapter run
+ * instead, which is how a printed Bible does it.
+ */
+function chapterRun(blocks, page) {
+  const numbers = blocks
+    .filter((b) => b.kind === 'heading' && b.level === 3)
+    .map((b) => {
+      const text = b.spans.map((sp) => sp.text).join(' ');
+      const last = text.trim().split(/\s+/).pop() ?? '';
+      return last;
+    })
+    .filter(Boolean);
+  if (numbers.length < 2) return null;
+  return {
+    kind: 'para',
+    page,
+    // Spaces, not a middle dot: Taamey Frank has no U+00B7 and it renders as a
+    // box. A missing glyph is not a layout error, so nothing catches it.
+    spans: [{ text: numbers.join(' '), bold: false, small: true }],
+  };
 }
 
 async function fetchVersion(ref, version) {
@@ -154,15 +188,16 @@ const sectionNames = englishOnly ? {} : undefined;
 const numeral = englishOnly ? ARABIC : undefined;
 const labels = englishOnly ? ENGLISH_LABELS : HEBREW_LABELS;
 
-let titles = await tanakhBooks();
-if (only) titles = titles.filter((t) => t === only);
-if (limit > 0) titles = titles.slice(0, limit);
+let books = await tanakhBooks();
+if (only) books = books.filter((b) => b.title === only);
+if (limit > 0) books = books.slice(0, limit);
+const titles = books.map((b) => b.title);
 console.log(`${titles.length} books · translation: ${english}`);
 
 const parts = [];
 const sources = new Map();
 
-for (const [i, title] of titles.entries()) {
+for (const [i, { title, section }] of books.entries()) {
   process.stdout.write(`  ${String(i + 1).padStart(2)}/${titles.length} ${title.padEnd(22)}`);
   // Sefaria wants language|versionTitle; without the prefix it answers with
   // nothing and the pairing silently finds no partner.
@@ -202,7 +237,12 @@ for (const [i, title] of titles.entries()) {
     }
   }
 
-  parts.push({ title, doc: { ...heDoc, blocks } });
+  const run = chapterRun(blocks, blocks[0]?.page ?? 1);
+  parts.push({
+    title,
+    section,
+    doc: { ...heDoc, blocks: run ? [run, ...blocks] : blocks },
+  });
   console.log(`${String(heDoc.blocks.length).padStart(5)} verses  +${paired} translated`);
 }
 

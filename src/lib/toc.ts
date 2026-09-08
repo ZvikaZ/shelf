@@ -8,6 +8,8 @@ export function headingId(blockIndex: number): string {
 
 export interface TocEntry {
   text: string;
+  /** Heading depth; see Block.level. Unset where a book has no hierarchy. */
+  level?: number;
   /** Citation slot the section opens on. */
   page: number;
   /** What that slot prints — a folio number, or a Hebrew reference. */
@@ -29,7 +31,8 @@ export function tocEntries(doc: BookDoc): TocEntry[] {
   doc.blocks.forEach((b, i) => {
     if (b.kind !== 'heading') return;
     const text = blockText(b).trim();
-    if (text) entries.push({ text, page: b.page, label: blockLabel(b), id: headingId(i) });
+    if (text)
+      entries.push({ text, page: b.page, label: blockLabel(b), id: headingId(i), level: b.level });
   });
   return entries;
 }

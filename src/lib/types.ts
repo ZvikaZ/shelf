@@ -88,6 +88,12 @@ export interface Block {
   kind: BlockKind;
   spans: Span[];
   /**
+   * Depth of a heading: 1 a section, 2 a work, 3 a division within it. Only
+   * meaningful on headings, and only where something builds a hierarchy — a
+   * single book leaves it unset.
+   */
+  level?: number;
+  /**
    * Citation slot: a Dicta scan folio, or an ordinal over Sefaria's sections.
    * Used for addressing — links, scroll restore, de-duplication — so it only
    * has to be stable and increasing, not meaningful.
