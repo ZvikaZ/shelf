@@ -56,13 +56,22 @@ function pdfFonts(face: Face): Promise<PdfFonts> {
   if (!pending) {
     const spec = FACES[face];
     pending = (async () => {
-      const [regular, bold] = await Promise.all(
-        [spec.regular, spec.bold].map(async (url) => {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error('טעינת הגופן נכשלה');
-          return new Uint8Array(await res.arrayBuffer());
-        }),
-      );
+      // Fetched per distinct URL, not per slot: a one-weight face names the
+      // same file twice, and downloading it twice would also embed it twice.
+      const bytes = new Map<string, Promise<Uint8Array>>();
+      const load = (url: string) => {
+        let got = bytes.get(url);
+        if (!got) {
+          got = (async () => {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('טעינת הגופן נכשלה');
+            return new Uint8Array(await res.arrayBuffer());
+          })();
+          bytes.set(url, got);
+        }
+        return got;
+      };
+      const [regular, bold] = await Promise.all([load(spec.regular), load(spec.bold)]);
       return { regular, bold, hasCantillation: spec.cantillation };
     })();
     fontsByFace.set(face, pending);

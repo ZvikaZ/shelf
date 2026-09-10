@@ -231,6 +231,16 @@ describe('emphasis in a face that ships one weight', () => {
     expect(ops).toMatch(/\b2 Tr\b/);
   });
 
+  it('recognises the same font arriving as two separate copies', async () => {
+    // The app fetches the regular and bold URLs independently, so a one-weight
+    // face reaches it as two distinct arrays holding identical bytes. Checking
+    // object identity missed that, and the emphasis stayed invisible.
+    const copy = Uint8Array.from(fonts.regular);
+    expect(copy).not.toBe(fonts.regular);
+    const ops = await operators({ regular: fonts.regular, bold: copy });
+    expect(ops).toMatch(/2 Tr/);
+  });
+
   it('leaves a two-weight face to its real bold', async () => {
     const ops = await operators(fonts);
     expect(ops).not.toMatch(/\b2 Tr\b/);
