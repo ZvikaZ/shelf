@@ -104,9 +104,9 @@ function placeEn(index) {
 const catalogue = await getJson(`${API}/index/`);
 const all = leaves(catalogue);
 const entries = all.filter(isStandalone);
-const commentaries = all.filter(isCommentary);
+const commentaryIndex = all.filter(isCommentary);
 console.log(
-  `${all.length} titles: ${entries.length} standalone works, ${commentaries.length} commentaries`,
+  `${all.length} titles: ${entries.length} standalone works, ${commentaryIndex.length} commentaries`,
 );
 
 // The index tree carries no author, year or place — that lives only on the
@@ -179,7 +179,7 @@ const books = entries.map((entry, i) => {
  * author, and its category comes from the same English name the standalone
  * works translate, so no per-title request is needed for any of the 5,400.
  */
-const commentaryBooks = commentaries.map((entry) => {
+const commentaryBooks = commentaryIndex.map((entry) => {
   const cats = entry.categories ?? [];
   const author = entry.heCommentator || entry.heCollectiveTitle || null;
   return {
