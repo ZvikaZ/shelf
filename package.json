@@ -18,6 +18,10 @@
     "build:opds": "node scripts/build-opds.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/share": "^8.0.1",
     "@pdf-lib/fontkit": "^1.1.1",
     "bidi-js": "^1.0.3",
     "docx": "^9.7.1",
@@ -41,6 +45,7 @@
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.11"
   }
 }
