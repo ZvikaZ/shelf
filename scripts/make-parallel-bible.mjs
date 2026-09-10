@@ -33,7 +33,11 @@ const limit = Number(args.get('--limit') ?? 0);
 const only = args.get('--only');
 const englishOnly = args.has('--english-only');
 const english = args.get('--english') || 'The Koren Jerusalem Bible';
-const outFile = args.get('--out') || 'dist-books/tanakh-parallel.pdf';
+// The default name follows the mode, so the two volumes never overwrite each
+// other when both are built.
+const outFile =
+  args.get('--out') ||
+  (englishOnly ? 'dist-books/tanakh-english.pdf' : 'dist-books/tanakh-parallel.pdf');
 
 async function loadLib() {
   const entry = join(tmpdir(), `shelf-lib-${Date.now()}.mjs`);
@@ -129,32 +133,6 @@ function flowVerses(blocks) {
   return out;
 }
 
-/**
- * A book's chapters as one compact line, set small under its title.
- *
- * The printed contents lists books only — chapters there would run to some
- * twenty-four pages of leader dots — so each book carries its own chapter run
- * instead, which is how a printed Bible does it.
- */
-function chapterRun(blocks, page) {
-  const numbers = blocks
-    .filter((b) => b.kind === 'heading' && b.level === 3)
-    .map((b) => {
-      const text = b.spans.map((sp) => sp.text).join(' ');
-      const last = text.trim().split(/\s+/).pop() ?? '';
-      return last;
-    })
-    .filter(Boolean);
-  if (numbers.length < 2) return null;
-  return {
-    kind: 'para',
-    page,
-    // Spaces, not a middle dot: Taamey Frank has no U+00B7 and it renders as a
-    // box. A missing glyph is not a layout error, so nothing catches it.
-    spans: [{ text: numbers.join(' '), bold: false, small: true }],
-  };
-}
-
 async function fetchVersion(ref, version) {
   const res = await getJson(`${API}/v3/texts/${encodeURIComponent(ref)}?version=${encodeURIComponent(version)}`);
   const v = res?.versions?.[0];
@@ -237,12 +215,7 @@ for (const [i, { title, section }] of books.entries()) {
     }
   }
 
-  const run = chapterRun(blocks, blocks[0]?.page ?? 1);
-  parts.push({
-    title,
-    section,
-    doc: { ...heDoc, blocks: run ? [run, ...blocks] : blocks },
-  });
+  parts.push({ title, section, doc: { ...heDoc, blocks } });
   console.log(`${String(heDoc.blocks.length).padStart(5)} verses  +${paired} translated`);
 }
 
