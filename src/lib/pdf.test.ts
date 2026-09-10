@@ -1,7 +1,15 @@
 import { StandardFonts } from 'pdf-lib';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
+import {
+  decodePDFRawStream,
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRawStream,
+} from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, makeDoc, sampleArchive } from '../test/fixtures';
 import { pagesFromZip } from './fetchBook';
@@ -179,5 +187,52 @@ describe('how deep the printed contents goes', () => {
   it('prints the shallowest level however long it runs', () => {
     // Something must be printed, even past the cap.
     expect(printedEntries(rows(1, 400))).toHaveLength(400);
+  });
+});
+
+describe('emphasis in a face that ships one weight', () => {
+  // Taamey D has a single weight, so the bold face is the regular one. A
+  // reader and Word synthesise a bold in that situation; a PDF viewer does
+  // not, so inline emphasis simply disappeared from the page.
+  const emphasised = makeDoc({
+    blocks: [
+      {
+        kind: 'para',
+        page: 1,
+        spans: [
+          { text: 'רגיל', bold: false },
+          { text: 'מודגש', bold: true },
+        ],
+      },
+    ],
+  });
+
+  /** Every drawing operator in the finished file, as text. */
+  async function operators(faces: { regular: Uint8Array; bold: Uint8Array }): Promise<string> {
+    const out = await buildPdf(alfeiMenashe, emphasised, faces);
+    const parsed = await PDFDocument.load(out);
+    const chunks: string[] = [];
+    for (const page of parsed.getPages()) {
+      const contents = page.node.Contents();
+      const streams = contents instanceof PDFArray ? contents.asArray() : [contents];
+      for (const entry of streams) {
+        const stream = parsed.context.lookup(entry);
+        if (stream instanceof PDFRawStream) {
+          chunks.push(new TextDecoder().decode(decodePDFRawStream(stream).decode()));
+        }
+      }
+    }
+    return chunks.join('\n');
+  }
+
+  it('strokes the bold run when there is no bold face to switch to', async () => {
+    const ops = await operators({ regular: fonts.regular, bold: fonts.regular });
+    // Text rendering mode 2 — fill and stroke — is how a PDF thickens a glyph.
+    expect(ops).toMatch(/\b2 Tr\b/);
+  });
+
+  it('leaves a two-weight face to its real bold', async () => {
+    const ops = await operators(fonts);
+    expect(ops).not.toMatch(/\b2 Tr\b/);
   });
 });
