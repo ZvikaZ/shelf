@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, makeDoc, sampleArchive } from '../test/fixtures';
 import { buildDocx } from './docx';
+import { obfuscate } from './docxFont';
 import { buildEpub, chapterise } from './epub';
 import { pagesFromZip } from './fetchBook';
 import { blockText, buildDoc } from './parseOcr';
@@ -402,5 +405,130 @@ describe('DOCX presentation', () => {
     const xml = await zip.file('word/document.xml')!.async('string');
     expect(xml).toContain('w:firstLine');
     expect(xml).toContain('w:val="both"');
+  });
+});
+
+describe('te\u2019amim in the exports', () => {
+  // Song of Songs 1:3, accented — the verse the old stripping turned into
+  // `לְרֵ □יחַ □שְׁמָנֶ □יךָ` and so was deleted outright.
+  const VERSE = 'לְרֵ֙יחַ֙ שְׁמָנֶ֣יךָ טוֹבִ֔ים';
+  const accented = makeDoc({
+    blocks: [{ kind: 'para', page: 1, spans: [{ text: VERSE, bold: false }] }],
+  });
+  const plainDoc = makeDoc({
+    blocks: [{ kind: 'para', page: 1, spans: [{ text: 'דין השכמת הבוקר', bold: false }] }],
+  });
+  const TAAM = /[\u0591-\u05AF]/;
+
+  it('keeps the accents in an EPUB, and embeds a face that can set them', async () => {
+    const zip = await JSZip.loadAsync(await buildEpub(alfeiMenashe, accented));
+    const chapter = await zip.file('OEBPS/ch0001.xhtml')!.async('string');
+    expect(TAAM.test(chapter)).toBe(true);
+    expect(zip.file('OEBPS/fonts/TaameyD-hebrew.woff2')).not.toBeNull();
+    const css = await zip.file('OEBPS/style.css')!.async('string');
+    expect(css).toContain('Taamey D');
+  });
+
+  it('leaves an unaccented book on the face it always used', async () => {
+    const zip = await JSZip.loadAsync(await buildEpub(alfeiMenashe, plainDoc));
+    expect(zip.file('OEBPS/fonts/FrankRuhlLibre-hebrew.woff2')).not.toBeNull();
+    expect(zip.file('OEBPS/fonts/TaameyD-hebrew.woff2')).toBeNull();
+  });
+
+  it('carries the licence of whichever face travelled', async () => {
+    const zip = await JSZip.loadAsync(await buildEpub(alfeiMenashe, accented));
+    const licence = await zip.file('OEBPS/fonts/LICENSE-TaameyD.txt')!.async('string');
+    expect(licence).toContain('Taamey D');
+  });
+
+  it('keeps the accents in a DOCX, which asks for a font that has them', async () => {
+    const zip = await JSZip.loadAsync(await buildDocx(alfeiMenashe, accented));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(TAAM.test(xml)).toBe(true);
+  });
+});
+
+describe('citations in the exports', () => {
+  // A commentary as Sefaria files it: a verse, then remarks hanging off it.
+  const cited = makeDoc({
+    blocks: [
+      { kind: 'heading', page: 1, spans: [{ text: 'פרק ח', bold: false }], level: 3 },
+      { kind: 'para', page: 2, label: 'ח:יג', spans: [{ text: 'הַיּוֹשֶׁבֶת בַּגַּנִּים', bold: false }] },
+      { kind: 'para', page: 3, label: 'ח:יג:א', layer: 'מלבי״ם', spans: [{ text: 'משל דברי המפרש', bold: false }] },
+      { kind: 'para', page: 4, label: 'ח:יג:ב', layer: 'מלבי״ם', spans: [{ text: 'מליצה דברי המפרש', bold: false }] },
+    ],
+  });
+
+  it('sets the verse number inline in an EPUB, and drops the margin citation', async () => {
+    const zip = await JSZip.loadAsync(await buildEpub(alfeiMenashe, cited));
+    const chapter = await zip.file('OEBPS/ch0001.xhtml')!.async('string');
+    expect(chapter).toContain('<span class="verse">יג</span>');
+    // The full citation used to be printed beside every remark.
+    expect(chapter).not.toContain('ח:יג:ב');
+    expect(chapter).not.toContain('doc-pagebreak');
+  });
+
+  it('leaves a Dicta book its folio marks, which are not citations', async () => {
+    const zip = await JSZip.loadAsync(await buildEpub(alfeiMenashe, doc));
+    const chapter = await zip.file('OEBPS/ch0001.xhtml')!.async('string');
+    expect(chapter).toContain('doc-pagebreak');
+    expect(chapter).not.toContain('class="verse"');
+  });
+
+  it('sets the verse number inline in a DOCX, and not the commentary numbers', async () => {
+    const zip = await JSZip.loadAsync(await buildDocx(alfeiMenashe, cited));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml).toContain('יג');
+    expect(xml).not.toContain('ח:יג:ב');
+  });
+});
+
+describe('embedding the cantillation font in a DOCX', () => {
+  const ttf = new Uint8Array(readFileSync(resolve('src/assets/fonts/TaameyD.ttf')));
+  const accented = makeDoc({
+    blocks: [{ kind: 'para', page: 1, spans: [{ text: 'לְרֵ֙יחַ֙ שְׁמָנֶ֣יךָ', bold: false }] }],
+  });
+  const plainDoc = makeDoc({
+    blocks: [{ kind: 'para', page: 1, spans: [{ text: 'דין השכמת הבוקר', bold: false }] }],
+  });
+
+  it('carries the font inside the file, declared the way Word expects', async () => {
+    const zip = await JSZip.loadAsync(await buildDocx(alfeiMenashe, accented, ttf));
+    expect(zip.file('word/fonts/font1.odttf')).not.toBeNull();
+
+    const types = await zip.file('[Content_Types].xml')!.async('string');
+    expect(types).toContain('obfuscatedFont');
+
+    const settings = await zip.file('word/settings.xml')!.async('string');
+    expect(settings).toContain('<w:embedTrueTypeFonts/>');
+
+    const table = await zip.file('word/fontTable.xml')!.async('string');
+    expect(table).toContain('w:name="Taamey D"');
+    expect(table).toContain('w:embedRegular');
+
+    const rels = await zip.file('word/_rels/fontTable.xml.rels')!.async('string');
+    expect(rels).toContain('fonts/font1.odttf');
+  });
+
+  it('sets the text in the embedded family, not the installed one', async () => {
+    const zip = await JSZip.loadAsync(await buildDocx(alfeiMenashe, accented, ttf));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml).toContain('w:cs="Taamey D"');
+    expect(xml).not.toContain('FrankRuehl');
+  });
+
+  it('scrambles only the first 32 bytes, and reversibly', async () => {
+    const zip = await JSZip.loadAsync(await buildDocx(alfeiMenashe, accented, ttf));
+    const stored = await zip.file('word/fonts/font1.odttf')!.async('uint8array');
+    expect(stored.length).toBe(ttf.length);
+    // Obfuscation is its own inverse, so a second pass gives the font back.
+    expect(Array.from(obfuscate(stored).slice(0, 64))).toEqual(Array.from(ttf.slice(0, 64)));
+  });
+
+  it('embeds nothing in a book with no te\u2019amim', async () => {
+    const zip = await JSZip.loadAsync(await buildDocx(alfeiMenashe, plainDoc, ttf));
+    expect(zip.file('word/fonts/font1.odttf')).toBeNull();
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml).toContain('FrankRuehl');
   });
 });

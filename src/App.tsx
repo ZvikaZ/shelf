@@ -240,9 +240,45 @@ export function App() {
           {' '}— מיזמים המנגישים טקסטים תורניים לציבור ללא עלות. תודה על העבודה ועל שחרור
           הטקסטים לשימוש חופשי.
         </p>
-        <p style={{ margin: 0 }}>
+        <p style={{ margin: '0 0 6px' }}>
           אתר זה הוא ממשק עיון והורדה בלבד, ואינו קשור רשמית לאף אחד מהם. הרישיון משתנה לפי
           הספר והמהדורה, ומצוין בכל ספר ובכל קובץ שמופק ממנו.
+        </p>
+        {/* The GPL governs the font itself wherever we hand it out — the site
+            serves it, and every export embeds it. Its embedding exception
+            covers the documents; this credit and the link to the source cover
+            the font. Frank Ruhl Libre is OFL and needs neither, but naming
+            both is more use to a reader than naming one. */}
+        <p style={{ margin: 0 }}>
+          גופנים:{' '}
+          <a
+            href="https://fonts.google.com/specimen/Frank+Ruhl+Libre"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Frank Ruhl Libre
+          </a>{' '}
+          (SIL OFL 1.1) · טקסטים מנוקדים בטעמים מוגשים ב־{' '}
+          <a href="https://bdenckla.github.io/Taamey_D/" target="_blank" rel="noreferrer">
+            Taamey D
+          </a>{' '}
+          מאת Ben Denckla, מבוסס על Taamey Frank CLM מאת יורם גנת —{' '}
+          <a
+            href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GNU GPL v2
+          </a>{' '}
+          עם חריג הטמעה,{' '}
+          <a
+            href="https://github.com/bdenckla/Taamey_D"
+            target="_blank"
+            rel="noreferrer"
+          >
+            קוד המקור
+          </a>
+          .
         </p>
       </footer>
     </>

@@ -1,9 +1,18 @@
 import JSZip from 'jszip';
 import { FRANK_RUHL_LICENSE, frankRuhlBytes } from '../assets/fonts/frankRuhl';
+import { TAAMEY_D_LICENSE, taameyDBytes } from '../assets/fonts/taameyD';
+import { hasCantillation } from './cantillation';
 import { stripUnsupportedMarks } from './hebrew';
 import { blockText } from './parseOcr';
 import { headingId, shouldIncludeToc, tocEntries, type TocEntry } from './toc';
-import { blockLabel, type Block, type Book, type BookDoc } from './types';
+import {
+  blockLabel,
+  usesCitations,
+  verseMark,
+  type Block,
+  type Book,
+  type BookDoc,
+} from './types';
 
 
 export function esc(s: string): string {
@@ -69,18 +78,54 @@ export function chapterise(book: Book, doc: BookDoc): Chapter[] {
 // rather than merely requested: naming a font almost nobody has installed just
 // falls through to the reader's default modern sans/serif, which is precisely
 // the mistake this replaces.
-const STYLE = `@charset "utf-8";
+//
+// Frank Ruhl Libre has no cantillation glyphs, so an accented text is set in
+// Taamey D instead, which carries all thirty-one and positions them correctly
+// where a letter takes two. Only one of the two ever travels in a given book,
+// and each carries its own licence, which are not the same licence.
+const FACES = {
+  plain: {
+    family: 'Frank Ruhl Libre',
+    file: 'FrankRuhlLibre-hebrew.woff2',
+    weights: '400 700',
+    bytes: frankRuhlBytes,
+    license: FRANK_RUHL_LICENSE,
+    licenseFile: 'OFL.txt',
+    stack: '"Frank Ruhl Libre", "FrankRuehl", "Frank Ruehl CLM", "David", serif',
+  },
+  taamim: {
+    family: 'Taamey D',
+    file: 'TaameyD-hebrew.woff2',
+    // One weight; a reader synthesises bold where the source asks for it.
+    weights: '500',
+    bytes: taameyDBytes,
+    license: TAAMEY_D_LICENSE,
+    licenseFile: 'LICENSE-TaameyD.txt',
+    stack: '"Taamey D", "Taamey Frank CLM", "Frank Ruhl Libre", "David", serif',
+  },
+} as const;
+
+type Face = (typeof FACES)[keyof typeof FACES];
+
+const styleFor = (face: Face) => `@charset "utf-8";
 @font-face {
-  font-family: "Frank Ruhl Libre";
-  font-weight: 400 700;
+  font-family: "${face.family}";
+  font-weight: ${face.weights};
   font-style: normal;
-  src: url("fonts/FrankRuhlLibre-hebrew.woff2") format("woff2");
+  src: url("fonts/${face.file}") format("woff2");
+}
+.verse {
+  font-size: 0.68em;
+  font-weight: 600;
+  color: #6b6456;
+  vertical-align: 0.35em;
+  margin-inline-end: 0.35em;
 }
 html { direction: rtl; }
 body {
   direction: rtl;
   text-align: justify;
-  font-family: "Frank Ruhl Libre", "FrankRuehl", "Frank Ruehl CLM", "David", serif;
+  font-family: ${face.stack};
   line-height: 1.7;
   margin: 1em;
 }
@@ -123,14 +168,17 @@ function renderChapter(
   index: number,
   seenPages: Set<number>,
   ids: Map<Block, string>,
+  keepMarks: boolean,
+  cited: boolean,
 ): RenderedChapter {
   const pages: number[] = [];
   const anchors: string[] = [];
   const body = ch.blocks
     .map((b) => {
-      // Page anchors keep a scanned edition citable by folio.
+      // Page anchors keep a scanned edition citable by folio. A text with real
+      // citations gets those inline instead, the way the reader sets them.
       let marker = '';
-      if (!seenPages.has(b.page)) {
+      if (!cited && !seenPages.has(b.page)) {
         seenPages.add(b.page);
         pages.push(b.page);
         marker =
@@ -139,10 +187,12 @@ function renderChapter(
       }
       // Bold that is not a section title is real emphasis in the source and is
       // preserved as <strong>, matching how Dicta renders the page.
-      // The embedded font has no cantillation glyphs; see ./hebrew.
+      // Te'amim survive only if the embedded face can set them; see ./hebrew.
+      const verse = verseMark(b);
+      const opener = verse ? `<span class="verse">${esc(verse)}</span>` : '';
       const inner = b.spans
         .map((sp) => {
-          const t = esc(stripUnsupportedMarks(sp.text));
+          const t = esc(keepMarks ? sp.text : stripUnsupportedMarks(sp.text));
           return sp.bold ? `<strong>${t}</strong>` : t;
         })
         .join(' ');
@@ -150,7 +200,7 @@ function renderChapter(
       // commentary sets itself apart from the text it comments on.
       if (b.kind !== 'heading') {
         const cls = b.layer ? ' class="commentary"' : '';
-        return `<p${cls}>${marker}${inner}</p>`;
+        return `<p${cls}>${marker}${opener}${inner}</p>`;
       }
       const id = ids.get(b);
       if (id) anchors.push(id);
@@ -239,13 +289,21 @@ ${rows}
 export async function buildEpub(book: Book, doc: BookDoc): Promise<Uint8Array> {
   const seenPages = new Set<number>();
 
+  // One face travels with the book, chosen by whether the text is accented —
+  // and the accents are kept only because that face can set them.
+  const accented = hasCantillation(doc);
+  const cited = usesCitations(doc);
+  const face = accented ? FACES.taamim : FACES.plain;
+
   // Anchor ids are keyed on the block objects, which chapterise preserves.
   const ids = new Map<Block, string>();
   doc.blocks.forEach((b, i) => {
     if (b.kind === 'heading') ids.set(b, headingId(i));
   });
 
-  const chapters = chapterise(book, doc).map((ch, i) => renderChapter(ch, i, seenPages, ids));
+  const chapters = chapterise(book, doc).map((ch, i) =>
+    renderChapter(ch, i, seenPages, ids, accented, cited),
+  );
 
   const entries = tocEntries(doc);
   const withContents = shouldIncludeToc(entries);
@@ -266,10 +324,10 @@ export async function buildEpub(book: Book, doc: BookDoc): Promise<Uint8Array> {
   );
 
   const oebps = zip.folder('OEBPS')!;
-  oebps.file('style.css', STYLE);
-  oebps.file('fonts/FrankRuhlLibre-hebrew.woff2', frankRuhlBytes());
+  oebps.file('style.css', styleFor(face));
+  oebps.file(`fonts/${face.file}`, face.bytes());
   // The OFL requires the licence travel with the font.
-  oebps.file('fonts/OFL.txt', FRANK_RUHL_LICENSE);
+  oebps.file(`fonts/${face.licenseFile}`, face.license);
   oebps.file('title.xhtml', titlePage(book, doc));
   if (withContents) oebps.file('contents.xhtml', contentsPage(entries, location));
   for (const ch of chapters) oebps.file(ch.name, ch.xhtml);
@@ -281,7 +339,7 @@ export async function buildEpub(book: Book, doc: BookDoc): Promise<Uint8Array> {
     '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
     '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
     '<item id="css" href="style.css" media-type="text/css"/>',
-    '<item id="font" href="fonts/FrankRuhlLibre-hebrew.woff2" media-type="font/woff2"/>',
+    `<item id="font" href="fonts/${face.file}" media-type="font/woff2"/>`,
     '<item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>',
     ...(withContents
       ? ['<item id="contents" href="contents.xhtml" media-type="application/xhtml+xml"/>']

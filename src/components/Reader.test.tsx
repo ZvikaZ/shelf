@@ -269,3 +269,106 @@ describe('reader navigation and tools', () => {
     expect(screen.getByText(/^דף /)).toBeInTheDocument();
   });
 });
+
+describe('verse marks', () => {
+  const cited: BookDoc = {
+    pageCount: 1,
+    fidelity: 'bold',
+    attribution: DICTA_ATTRIBUTION,
+    blocks: [
+      { kind: 'heading', page: 1, spans: [{ text: 'פרק א', bold: false }] },
+      { kind: 'para', page: 1, label: 'א:א', spans: [{ text: 'שיר השירים אשר לשלמה', bold: false }] },
+      { kind: 'para', page: 1, label: 'א:ב', spans: [{ text: 'ישקני מנשיקות פיהו', bold: false }] },
+    ],
+  };
+
+  it('opens a verse with its own letter, not the whole citation', async () => {
+    getDoc.mockResolvedValue(cited);
+    render(<Reader book={alfeiMenashe} onClose={() => {}} />);
+    const verse = await screen.findByText('ישקני מנשיקות פיהו');
+    const para = verse.closest('p');
+    // The chapter already stands as a heading above, so only 'ב' is news.
+    expect(para?.querySelector('.rd-verse')?.textContent).toBe('ב');
+    expect(para?.textContent).not.toContain('א:ב');
+  });
+
+  it('leaves a commentary unnumbered, marking only the text it comments on', async () => {
+    getDoc.mockResolvedValue({
+      ...cited,
+      blocks: [
+        ...cited.blocks,
+        { kind: 'para', page: 1, label: 'א:ב:א', layer: 'מלבי״ם', spans: [{ text: 'משל: דברי המפרש', bold: false }] },
+      ],
+    });
+    render(<Reader book={alfeiMenashe} onClose={() => {}} />);
+    const remark = (await screen.findByText('משל: דברי המפרש')).closest('p');
+    expect(remark?.querySelector('.rd-verse')).toBeNull();
+    // The verse it hangs off is still numbered.
+    const verse = screen.getByText('ישקני מנשיקות פיהו').closest('p');
+    expect(verse?.querySelector('.rd-verse')?.textContent).toBe('ב');
+  });
+
+  it('gives a Dicta paragraph no mark, having no citation', async () => {
+    getDoc.mockResolvedValue(doc);
+    render(<Reader book={alfeiMenashe} onClose={() => {}} />);
+    const para = (await screen.findByText('טקסט נוסף עם עה״ת בתוכו')).closest('p');
+    expect(para?.querySelector('.rd-verse')).toBeNull();
+  });
+
+  it('does not shift the text search highlights are measured against', async () => {
+    getDoc.mockResolvedValue(cited);
+    render(<Reader book={alfeiMenashe} onClose={() => {}} />);
+    await screen.findByText('ישקני מנשיקות פיהו');
+    await userEvent.type(screen.getByPlaceholderText(/חיפוש/), 'מנשיקות');
+    await waitFor(() => {
+      const marks = document.querySelectorAll('.rd-body mark');
+      expect(marks.length).toBeGreaterThan(0);
+      expect(marks[0].textContent).toBe('מנשיקות');
+    });
+  });
+});
+
+describe('changing the text size', () => {
+  const originals = {
+    offsetTop: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop'),
+    offsetHeight: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight'),
+  };
+
+  afterEach(() => {
+    for (const [k, d] of Object.entries(originals)) {
+      if (d) Object.defineProperty(HTMLElement.prototype, k, d);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[k];
+    }
+  });
+
+  it('keeps the reader looking at the same place', async () => {
+    getDoc.mockResolvedValue(doc);
+    render(<Reader book={alfeiMenashe} onClose={() => {}} />);
+    await screen.findByText('טקסט נוסף עם עה״ת בתוכו');
+
+    const scroller = document.querySelector('.rd-scroll') as HTMLElement;
+    // jsdom does no layout, so give blocks a height that grows with the text
+    // size — which is the whole reason the position used to be lost.
+    const blockHeight = () => parseFloat(scroller.style.fontSize) * 6;
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get: blockHeight,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return Number(this.dataset.block ?? 0) * blockHeight();
+      },
+    });
+
+    // Halfway into the second block.
+    scroller.scrollTop = blockHeight() * 1.5;
+    const before = parseFloat(scroller.style.fontSize);
+
+    await userEvent.click(screen.getByLabelText('הגדלת טקסט'));
+
+    expect(parseFloat(scroller.style.fontSize)).toBeGreaterThan(before);
+    // Still halfway into the second block, now that the block is taller.
+    expect(scroller.scrollTop).toBeCloseTo(blockHeight() * 1.5, 0);
+  });
+});

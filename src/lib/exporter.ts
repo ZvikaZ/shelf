@@ -1,5 +1,7 @@
 import regularFontUrl from '../assets/fonts/FrankRuhlLibre-Regular.ttf?url';
 import boldFontUrl from '../assets/fonts/FrankRuhlLibre-Bold.ttf?url';
+import taamimRegularUrl from '../assets/fonts/TaameyD.ttf?url';
+import { hasCantillation } from './cantillation';
 import { buildDocx } from './docx';
 import { downloadName } from './filename';
 import { buildEpub } from './epub';
@@ -22,23 +24,50 @@ export function saveBytes(bytes: Uint8Array, fileName: string, mime: string): vo
 }
 
 /**
- * The PDF fonts are fetched from our own origin on first use, rather than
- * bundled: they are ~100 kB that only a PDF export needs.
+ * The two faces a book can be set in.
+ *
+ * Frank Ruhl Libre has no cantillation glyphs at all, so an accented text set
+ * in it loses every ta'am silently. Taamey D carries all thirty-one — it is
+ * Culmus's Frank Ruhl adaptation with Denckla's rewritten positioning, which
+ * matters for the common case of a letter taking two marks below: hiriq and
+ * meteg together collide in a font that only positions marks against the base
+ * letter, and הַשְׁמִיעִֽנִי is not a rare word.
+ *
+ * It ships in one weight, so bold reuses it: in an accented text the headings
+ * are already distinguished by size and centring. It is used only where the
+ * text needs it — no reason to change how the rest of the shelf looks, or to
+ * make every reader fetch a font their book does not use.
  */
-let fontsPromise: Promise<PdfFonts> | null = null;
+const FACES = {
+  plain: { regular: regularFontUrl, bold: boldFontUrl, cantillation: false },
+  taamim: { regular: taamimRegularUrl, bold: taamimRegularUrl, cantillation: true },
+} as const;
 
-function pdfFonts(): Promise<PdfFonts> {
-  fontsPromise ??= (async () => {
-    const [regular, bold] = await Promise.all(
-      [regularFontUrl, boldFontUrl].map(async (url) => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('טעינת הגופן נכשלה');
-        return new Uint8Array(await res.arrayBuffer());
-      }),
-    );
-    return { regular, bold };
-  })();
-  return fontsPromise;
+type Face = keyof typeof FACES;
+
+/**
+ * Fetched from our own origin on first use, rather than bundled: each face is
+ * ~100 kB that only a PDF export needs.
+ */
+const fontsByFace = new Map<Face, Promise<PdfFonts>>();
+
+function pdfFonts(face: Face): Promise<PdfFonts> {
+  let pending = fontsByFace.get(face);
+  if (!pending) {
+    const spec = FACES[face];
+    pending = (async () => {
+      const [regular, bold] = await Promise.all(
+        [spec.regular, spec.bold].map(async (url) => {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('טעינת הגופן נכשלה');
+          return new Uint8Array(await res.arrayBuffer());
+        }),
+      );
+      return { regular, bold, hasCantillation: spec.cantillation };
+    })();
+    fontsByFace.set(face, pending);
+  }
+  return pending;
 }
 
 export async function exportBook(
@@ -57,7 +86,7 @@ export async function exportBook(
   }
 
   if (format === 'pdf') {
-    const fonts = await pdfFonts();
+    const fonts = await pdfFonts(hasCantillation(doc) ? 'taamim' : 'plain');
     const bytes = await buildPdf(book, doc, fonts, (ratio) => onProgress?.('build', ratio));
     saveBytes(bytes, downloadName(book, 'pdf'), 'application/pdf');
     return;
@@ -69,8 +98,11 @@ export async function exportBook(
     return;
   }
   onProgress?.('build', 0.5);
+  // The same font the PDF would use, embedded in the file so an accented text
+  // sets its te'amim on a machine that does not have it installed.
+  const taamim = hasCantillation(doc) ? (await pdfFonts('taamim')).regular : undefined;
   saveBytes(
-    await buildDocx(book, doc),
+    await buildDocx(book, doc, taamim),
     downloadName(book, 'docx'),
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   );

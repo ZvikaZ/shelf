@@ -117,6 +117,37 @@ export function blockLabel(block: Pick<Block, 'page' | 'label'>): string {
   return block.label ?? String(block.page);
 }
 
+/**
+ * Whether this book cites itself by reference rather than by scanned page.
+ *
+ * A Sefaria text numbers chapter and verse; a Dicta scan has only the folio it
+ * was photographed from. The two are not interchangeable, and a book that has
+ * citations has no folios to print in the margin — its headings simply carry
+ * no label, which is not the same as being a scanned page.
+ */
+export function usesCitations(doc: { blocks: Pick<Block, 'label'>[] }): boolean {
+  return doc.blocks.some((b) => b.label !== undefined);
+}
+
+/**
+ * The verse mark a paragraph opens with, as a printed edition sets it.
+ *
+ * A citation is the whole path — `א:ב` is chapter one, verse two — but the
+ * chapter already stands as a heading above, so only the last step is news.
+ *
+ * Nothing for a commentary: numbering the verses of a text helps you find your
+ * place in it, while numbering each remark a commentator makes about them is
+ * noise, and there are several of those per verse. Nothing for a Dicta book
+ * either, which has no citation — its scanned folio belongs in the margin.
+ *
+ * Shared so the reader and the exports mark verses the same way.
+ */
+export function verseMark(block: Pick<Block, 'kind' | 'layer' | 'label'>): string | null {
+  if (block.kind !== 'para' || block.layer || !block.label) return null;
+  const last = block.label.split(':').pop() ?? '';
+  return last.trim() || null;
+}
+
 /** How much structural markup the source actually carried. */
 export type Fidelity = 'heading' | 'bold' | 'pages';
 

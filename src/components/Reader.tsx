@@ -1,13 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getDoc } from '../lib/bookCache';
 import { findMatches, segment, type Match } from '../lib/findInText';
 import { FORMAT_HINT, FORMAT_LABEL } from '../lib/formats';
 import { providerLabel } from '../lib/providers/registry';
 import { blockText } from '../lib/parseOcr';
+import { hasCantillation } from '../lib/cantillation';
 import { tocEntries } from '../lib/toc';
-import { blockLabel, type Block, type Book, type BookDoc, type ExportFormat } from '../lib/types';
+import {
+  blockLabel,
+  verseMark,
+  type Block,
+  type Book,
+  type BookDoc,
+  type ExportFormat,
+} from '../lib/types';
 
-const SIZES = [16, 18, 20, 23, 26];
+// Up to 40: the largest steps are what make this usable for someone who
+// needs them, and the reader is a single column of text either way.
+const SIZES = [16, 18, 20, 23, 26, 30, 34, 40];
 const DEFAULT_SIZE = 1;
 const SIZE_KEY = 'dicta:size';
 
@@ -75,7 +85,16 @@ function BlockView({ block, hits }: { block: Block; hits: Match[] }) {
   });
 
   if (block.kind === 'heading') return <h2 className="rd-heading">{children}</h2>;
-  return <p className={block.layer ? 'rd-para rd-commentary' : 'rd-para'}>{children}</p>;
+
+  // Outside `children`, so it never shifts the offsets search hits are measured
+  // against — those count the block's text, which the mark is no part of.
+  const mark = verseMark(block);
+  return (
+    <p className={block.layer ? 'rd-para rd-commentary' : 'rd-para'}>
+      {mark && <span className="rd-verse">{mark}</span>}
+      {children}
+    </p>
+  );
 }
 
 export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
@@ -99,6 +118,8 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
   const [current, setCurrent] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Where the reader was looking when the text size last changed. */
+  const anchorRef = useRef<{ index: number; into: number } | null>(null);
   const activeRef = useRef<HTMLLIElement>(null);
   const restored = useRef(false);
 
@@ -132,6 +153,9 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
   const plain = useMemo(() => (doc ? doc.blocks.map(blockText) : []), [doc]);
   const matches = useMemo(() => findMatches(plain, query), [plain, query]);
   const entries = useMemo(() => (doc ? tocEntries(doc) : []), [doc]);
+  // Frank Ruhl Libre has no cantillation glyphs, so an accented text needs the
+  // face that does. Only these books pay to fetch it.
+  const accented = useMemo(() => (doc ? hasCantillation(doc) : false), [doc]);
 
   const hitsByBlock = useMemo(() => {
     const m = new Map<number, Match[]>();
@@ -142,6 +166,42 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     }
     return m;
   }, [matches]);
+
+  /**
+   * Change the text size without losing the reader's place.
+   *
+   * Resizing reflows everything, so the scroll offset that pointed at this
+   * paragraph now points somewhere else entirely — the page appeared to jump.
+   * The block at the top of the viewport is noted first, along with how far
+   * into it we are as a fraction of its height, and put back afterwards; the
+   * fraction matters because the block itself grows.
+   */
+  const resize = useCallback((delta: number) => {
+    const el = scrollRef.current;
+    if (el) {
+      anchorRef.current = null;
+      for (const node of el.querySelectorAll<HTMLElement>('[data-block]')) {
+        if (node.offsetTop + node.offsetHeight > el.scrollTop) {
+          anchorRef.current = {
+            index: Number(node.dataset.block ?? 0),
+            into: node.offsetHeight ? (el.scrollTop - node.offsetTop) / node.offsetHeight : 0,
+          };
+          break;
+        }
+      }
+    }
+    setSizeIndex((i) => Math.max(0, Math.min(SIZES.length - 1, i + delta)));
+  }, []);
+
+  // Before the browser paints the new size, so there is no visible jump.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const anchor = anchorRef.current;
+    anchorRef.current = null;
+    if (!el || !anchor) return;
+    const node = el.querySelector<HTMLElement>(`[data-block="${anchor.index}"]`);
+    if (node) el.scrollTop = node.offsetTop + anchor.into * node.offsetHeight;
+  }, [sizeIndex]);
 
   const scrollToBlock = useCallback((index: number) => {
     document.getElementById(`rd-b${index}`)?.scrollIntoView({ block: 'center' });
@@ -311,7 +371,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
           <button
             type="button"
             className="rd-btn"
-            onClick={() => setSizeIndex((i) => Math.max(0, i - 1))}
+            onClick={() => resize(-1)}
             aria-label="הקטנת טקסט"
           >
             א−
@@ -319,7 +379,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
           <button
             type="button"
             className="rd-btn"
-            onClick={() => setSizeIndex((i) => Math.min(SIZES.length - 1, i + 1))}
+            onClick={() => resize(1)}
             aria-label="הגדלת טקסט"
           >
             א+
@@ -381,7 +441,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
         </div>
       )}
 
-      <div className="rd-body">
+      <div className={accented ? 'rd-body rd-body-taamim' : 'rd-body'}>
         {showToc && entries.length > 0 && (
           <nav className="rd-toc" aria-label="תוכן העניינים">
             {/* The control that dismisses the drawer lives in the drawer, at

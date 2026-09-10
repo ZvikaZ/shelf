@@ -586,3 +586,31 @@ button, input, select { font: inherit; color: inherit; }
   max-width: 46ch;
   line-height: 1.5;
 }
+
+/* The verse mark a paragraph opens with: present enough to find, quiet enough
+   to read past. Sized in em so it follows the reader's text-size control. */
+.rd-verse {
+  font-size: 0.68em;
+  font-weight: 600;
+  color: var(--ink-faint);
+  vertical-align: 0.35em;
+  margin-inline-end: 0.35em;
+  user-select: none;
+}
+
+/* Taamey D carries all thirty-one te'amim, which Frank Ruhl Libre has none of,
+   and places two marks under one letter side by side rather than on top of
+   each other. Declared here but fetched only when a book actually sets text in
+   it, so an unpointed book pays nothing for it. */
+@font-face {
+  font-family: 'Taamey D';
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/TaameyD-hebrew.woff2') format('woff2');
+}
+
+.rd-body-taamim {
+  --serif: 'Taamey D', 'Frank Ruhl Libre', 'David', serif;
+  font-family: var(--serif);
+}

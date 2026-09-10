@@ -13,15 +13,33 @@ import {
   Paragraph,
   TextRun,
 } from 'docx';
-import { stripUnsupportedMarks } from './hebrew';
+import { hasCantillation } from './cantillation';
+import { embedDocxFont } from './docxFont';
 import { shouldIncludeToc, tocEntries } from './toc';
-import { blockLabel, type Book, type BookDoc, type Span } from './types';
+import {
+  blockLabel,
+  usesCitations,
+  verseMark,
+  type Book,
+  type BookDoc,
+  type Span,
+} from './types';
 
 
 // Word picks the font for Hebrew from the *complex script* slot (`cs`), not
 // `ascii`, so both are set — otherwise the run silently falls back to Calibri.
 // FrankRuehl ships with Windows, which is where these files will mostly open.
 const FONT = { ascii: 'FrankRuehl', hAnsi: 'FrankRuehl', cs: 'FrankRuehl' } as const;
+
+/**
+ * The face an accented text is set in, embedded in the file.
+ *
+ * FrankRuehl does have all thirty-one te'amim, but it is not a cantillation
+ * font: it stacks two marks under one letter on top of each other. Taamey D
+ * places them side by side, and travels inside the document so it works on a
+ * machine that has never heard of it.
+ */
+const TAAMIM_FAMILY = 'Taamey D';
 
 const INK = '000000';
 const GREY = '808080';
@@ -59,11 +77,13 @@ function rtl(
       (s, i) =>
         new TextRun({
           // Runs were split on style, so restore the separating space.
-          // FrankRuehl has no cantillation glyphs either; see ./hebrew.
-          text: stripUnsupportedMarks(i === 0 ? s.text : ' ' + s.text),
+          // FrankRuehl, which Windows ships and this asks for, has all thirty-one
+          // te'amim, so the accents are set rather than dropped.
+          text: i === 0 ? s.text : ' ' + s.text,
           rightToLeft: true,
           font: FONT,
-          size,
+          // A verse number is set small beside the text it opens.
+          size: s.small ? Math.round(size * 0.62) : size,
           color: INK,
           bold: opts.heading || s.bold,
         }),
@@ -98,7 +118,12 @@ function folioMark(folio: string): Paragraph {
   });
 }
 
-export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
+export async function buildDocx(
+  book: Book,
+  doc: BookDoc,
+  /** Taamey D as TTF bytes. Without it an accented text keeps FrankRuehl. */
+  taamimFont?: Uint8Array,
+): Promise<Uint8Array> {
   const front: Paragraph[] = [
     new Paragraph({
       bidirectional: true,
@@ -186,15 +211,21 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
     contents.push(new Paragraph({ children: [new PageBreak()] }));
   }
 
+  const cited = usesCitations(doc);
   const seenFolios = new Set<number>();
   const body: Paragraph[] = [];
   for (const b of doc.blocks) {
-    if (!seenFolios.has(b.page)) {
+    // A scanned folio belongs in the margin; a citation is set inline instead,
+    // the way the reader sets it — in the margin it produced a column of
+    // ח:יג:ב beside every remark in a commentary.
+    if (!cited && !seenFolios.has(b.page)) {
       seenFolios.add(b.page);
       body.push(folioMark(blockLabel(b)));
     }
+    const mark = verseMark(b);
+    const spans = mark ? [{ text: mark, bold: false, small: true }, ...b.spans] : b.spans;
     body.push(
-      rtl(b.spans, {
+      rtl(spans, {
         heading: b.kind === 'heading',
         indent: b.kind === 'para',
         // Commentary is set smaller than the text it comments on.
@@ -282,5 +313,9 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  if (taamimFont && hasCantillation(doc)) {
+    return embedDocxFont(bytes, taamimFont, TAAMIM_FAMILY, FONT.cs);
+  }
   return bytes;
 }

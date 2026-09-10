@@ -366,31 +366,39 @@ describe('commentaries, fetched only when wanted', () => {
     return calls;
   }
 
-  it('leaves the commentary file alone on a normal visit', async () => {
+  it('fetches the commentary catalogue on a normal visit', async () => {
+    // Both kinds are on by default, so the whole shelf is searchable without
+    // anyone having to discover a switch. The 4 MB that costs on first paint
+    // is the deliberate trade.
     const calls = mockSplit();
     render(<App />);
     await screen.findByText('אלפי מנשה חלק א');
-    // 5,416 rows nobody asked for is most of the download.
-    expect(calls.some((c) => c.includes('commentaries'))).toBe(false);
+    expect(await screen.findByText('רש״י על בראשית')).toBeInTheDocument();
+    expect(calls.filter((c) => c.includes('commentaries'))).toHaveLength(1);
   });
 
-  it('still offers them, counted, before they are loaded', async () => {
+  it('shows both kinds switched on', async () => {
     mockSplit();
     render(<App />);
-    await screen.findByText('אלפי מנשה חלק א');
-    expect(screen.getByRole('checkbox', { name: /פירושים/ })).toBeInTheDocument();
-    expect(screen.getByText(/5,416|5416/)).toBeInTheDocument();
+    // Wait for the deferred file, or the counts are still the placeholders.
+    await screen.findByText('רש״י על בראשית');
+    expect(screen.getByRole('checkbox', { name: /פירושים/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /ספרים/ })).toBeChecked();
   });
 
-  it('fetches them once the reader asks, and shows them', async () => {
+  it('fetches the file once, however the filter is toggled', async () => {
     const user = userEvent.setup();
     const calls = mockSplit();
     render(<App />);
-    await screen.findByText('אלפי מנשה חלק א');
+    await screen.findByText('רש״י על בראשית');
 
-    await user.click(screen.getByRole('checkbox', { name: /פירושים/ }));
-
+    const box = screen.getByRole('checkbox', { name: /פירושים/ });
+    await user.click(box);
+    await waitFor(() => expect(screen.queryByText('רש״י על בראשית')).not.toBeInTheDocument());
+    await user.click(box);
     expect(await screen.findByText('רש״י על בראשית')).toBeInTheDocument();
+
+    // Already in hand — switching the facet must not fetch it again.
     expect(calls.filter((c) => c.includes('commentaries'))).toHaveLength(1);
   });
 

@@ -21,7 +21,7 @@ export interface Query {
   categories: string[];
   subcategories: string[];
   sources: string[];
-  /** Book kinds to show. Defaults to books alone — see EMPTY_QUERY. */
+  /** Book kinds to show. Defaults to everything — see EMPTY_QUERY. */
   kinds: string[];
 }
 
@@ -30,9 +30,11 @@ export const EMPTY_QUERY: Query = {
   categories: [],
   subcategories: [],
   sources: [],
-  // Commentaries outnumber books three to one, and most are per-tractate
-  // repeats, so browsing starts with books and opts into the rest.
-  kinds: [KIND_LABEL.book],
+  // Both, so a search covers the whole shelf without anyone having to know
+  // there is a second half to switch on. The cost is real — commentaries are
+  // a separate 4 MB catalogue, fetched on first paint rather than on demand —
+  // and they outnumber books three to one, most being per-tractate repeats.
+  kinds: [KIND_LABEL.book, KIND_LABEL.commentary],
 };
 
 export function isActive(q: Query): boolean {

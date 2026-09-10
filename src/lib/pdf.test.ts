@@ -1,3 +1,4 @@
+import { StandardFonts } from 'pdf-lib';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
@@ -5,8 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, makeDoc, sampleArchive } from '../test/fixtures';
 import { pagesFromZip } from './fetchBook';
 import { buildDoc } from './parseOcr';
-import { buildPdf, directionalRuns, displayWords } from './pdf';
-import { tocEntries } from './toc';
+import {
+  buildPdf,
+  directionalRuns,
+  displayWords,
+  printedEntries,
+  registerCoverage,
+  renderable,
+} from './pdf';
+import { tocEntries, type TocEntry } from './toc';
 
 const doc = buildDoc(await pagesFromZip(sampleArchive()));
 
@@ -127,3 +135,49 @@ describe('PDF output', () => {
   });
 });
 
+
+describe('a font that cannot draw what the text contains', () => {
+  it('substitutes rather than letting a box reach the page', async () => {
+    const { PDFDocument } = await import('pdf-lib');
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.TimesRoman);
+    // Stand in for a Hebrew face: Latin-1 and the curly quotes, nothing more.
+    registerCoverage(font, {
+      unitsPerEm: 1000,
+      layout: () => ({ glyphs: [], positions: [] }),
+      hasGlyphForCodePoint: (cp: number) => cp <= 0x00ff || cp === 0x2018 || cp === 0x2019,
+    });
+    // Koren spells Ye'i'el with a Greek dasia and koronis.
+    expect(renderable(font, 'Ye\u1FFEi\u1FBDel')).toBe('Ye\u2018i\u2019el');
+    expect(renderable(font, 'Ye\u0125i\u1FBDel')).toBe('Yehi\u2019el');
+  });
+});
+
+
+describe('how deep the printed contents goes', () => {
+  const rows = (level: number, n: number): TocEntry[] =>
+    Array.from({ length: n }, (_, i) => ({ text: `h${i}`, page: i, label: String(i), id: `i${i}`, level }));
+  /** A Dicta book's headings, which carry no level at all. */
+  const unlevelled = (n: number): TocEntry[] =>
+    Array.from({ length: n }, (_, i) => ({ text: `h${i}`, page: i, label: String(i), id: `i${i}` }));
+
+  it('prints a Dicta book, whose headings carry no level at all', () => {
+    expect(printedEntries(unlevelled(12))).toHaveLength(12);
+  });
+
+  it('prints a book whose only headings are chapters', () => {
+    // A single Sefaria book numbers chapters at level 3 and has nothing above
+    // them. Filtering to a fixed level left it with no contents page at all.
+    expect(printedEntries(rows(3, 8))).toHaveLength(8);
+  });
+
+  it('stops before a whole Tanakh of chapters', () => {
+    const tanakh = [...rows(1, 3), ...rows(2, 39), ...rows(3, 929)];
+    expect(printedEntries(tanakh)).toHaveLength(42);
+  });
+
+  it('prints the shallowest level however long it runs', () => {
+    // Something must be printed, even past the cap.
+    expect(printedEntries(rows(1, 400))).toHaveLength(400);
+  });
+});
