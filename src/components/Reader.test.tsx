@@ -294,6 +294,13 @@ describe('reader navigation and tools', () => {
     expect(within(toc).getByText('יורה דעה')).toBeInTheDocument();
     expect(within(toc).queryByText('תשובה ב')).not.toBeInTheDocument();
     expect(screen.getByText(/^אורח חיים · /)).toBeInTheDocument();
+
+    // The arrows fold and unfold in place, without leaving the page.
+    const user = userEvent.setup();
+    await user.click(within(toc).getByRole('button', { name: 'פתיחת יורה דעה' }));
+    expect(within(toc).getByText('תשובה ב')).toBeInTheDocument();
+    await user.click(within(toc).getByRole('button', { name: 'סגירת אורח חיים' }));
+    expect(within(toc).queryByText('תשובה א')).not.toBeInTheDocument();
   });
 
   it('shows which folio is on screen', async () => {
@@ -386,11 +393,13 @@ describe('changing the text size', () => {
       configurable: true,
       get: blockHeight,
     });
-    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
-      configurable: true,
-      get(this: HTMLElement) {
-        return Number(this.dataset.block ?? 0) * blockHeight();
-      },
+    // Blocks stacked from the top of the scroller, moving up as it scrolls.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(
+      this: Element,
+    ) {
+      const block = (this as HTMLElement).dataset?.block;
+      const top = block === undefined ? 0 : Number(block) * blockHeight() - scroller.scrollTop;
+      return { top } as DOMRect;
     });
 
     // Halfway into the second block.

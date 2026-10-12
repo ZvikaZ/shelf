@@ -353,7 +353,13 @@ button, input, select { font: inherit; color: inherit; }
 
 .rd-toc button:hover { background: var(--accent-soft); color: var(--accent); }
 .rd-folio { margin-inline-start: auto; color: var(--ink-faint); font-size: 12px; }
-.rd-toc-fold { width: 1em; color: var(--ink-faint); }
+.rd-toc li { display: flex; align-items: flex-start; }
+.rd-toc button.rd-toc-fold {
+  width: auto;
+  flex: none;
+  padding: 7px 4px;
+  color: var(--ink-faint);
+}
 
 .rd-scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
 

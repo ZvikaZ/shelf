@@ -22,6 +22,17 @@ const DEFAULT_SIZE = 1;
 const SIZE_KEY = 'dicta:size';
 
 /** Wide enough for the contents to sit beside the text rather than over it. */
+/**
+ * Where a block sits within the scrolling text, in the same terms as its
+ * `scrollTop`. Not `offsetTop`: that counts from the reader, toolbar and all,
+ * which put every block a toolbar's height lower than it is — so the block
+ * taken for "current" was the one just before, and a jump to a part heading
+ * left you, by the reader's own reckoning, in the part before it.
+ */
+function topIn(scroller: HTMLElement, node: HTMLElement): number {
+  return node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+}
+
 function wideScreen(): boolean {
   return typeof window.matchMedia === 'function'
     ? window.matchMedia('(min-width: 900px)').matches
@@ -181,10 +192,11 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     if (el) {
       anchorRef.current = null;
       for (const node of el.querySelectorAll<HTMLElement>('[data-block]')) {
-        if (node.offsetTop + node.offsetHeight > el.scrollTop) {
+        const top = topIn(el, node);
+        if (top + node.offsetHeight > el.scrollTop) {
           anchorRef.current = {
             index: Number(node.dataset.block ?? 0),
-            into: node.offsetHeight ? (el.scrollTop - node.offsetTop) / node.offsetHeight : 0,
+            into: node.offsetHeight ? (el.scrollTop - top) / node.offsetHeight : 0,
           };
           break;
         }
@@ -200,7 +212,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     anchorRef.current = null;
     if (!el || !anchor) return;
     const node = el.querySelector<HTMLElement>(`[data-block="${anchor.index}"]`);
-    if (node) el.scrollTop = node.offsetTop + anchor.into * node.offsetHeight;
+    if (node) el.scrollTop = topIn(el, node) + anchor.into * node.offsetHeight;
   }, [sizeIndex]);
 
   const scrollToBlock = useCallback((index: number) => {
@@ -237,7 +249,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
         const mid = el.scrollTop + el.clientHeight / 2;
         const blocks = el.querySelectorAll<HTMLElement>('[data-block]');
         for (const node of blocks) {
-          if (node.offsetTop + node.offsetHeight >= mid) {
+          if (topIn(el, node) + node.offsetHeight >= mid) {
             const index = Number(node.dataset.block ?? 0);
             writeStored(positionKey(book.id), String(index));
             setCurrent(index);
@@ -319,7 +331,21 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     return id;
   }, [doc, current]);
 
-  const shownEntries = useMemo(() => visibleEntries(entries, activeEntry), [entries, activeEntry]);
+  // Parts folded or unfolded by hand; see `visibleEntries`. A new book starts
+  // from the default.
+  const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());
+  useEffect(() => setChosen(new Map()), [doc]);
+  const shownEntries = useMemo(
+    () => visibleEntries(entries, activeEntry, chosen),
+    [entries, activeEntry, chosen],
+  );
+  const choose = (id: string, open: boolean | undefined) =>
+    setChosen((c) => {
+      const next = new Map(c);
+      if (open === undefined) next.delete(id);
+      else next.set(id, open);
+      return next;
+    });
 
   // Keep the section you are in visible in the contents. `nearest` moves the
   // list only when the entry is actually off-screen, so reading down the page
@@ -470,26 +496,35 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
                   className={e.id === activeEntry ? 'rd-toc-active' : undefined}
                   style={e.depth ? { paddingInlineStart: `${e.depth * 14}px` } : undefined}
                 >
+                  {/* Its own control: folding a part is not a request to go
+                      there, and the part being read has to fold too. */}
+                  {e.open !== undefined && (
+                    <button
+                      type="button"
+                      className="rd-toc-fold"
+                      aria-expanded={e.open}
+                      aria-label={`${e.open ? 'סגירת' : 'פתיחת'} ${e.text}`}
+                      onClick={() => choose(e.id, !e.open)}
+                    >
+                      <span aria-hidden="true">{e.open ? '▾' : '◂'}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-current={e.id === activeEntry ? 'true' : undefined}
-                    aria-expanded={e.open}
                     onClick={() => {
                       const at = doc?.blocks.findIndex(
                         (b, bi) => b.kind === 'heading' && `h${bi}` === e.id,
                       );
                       if (at !== undefined && at >= 0) scrollToBlock(at);
+                      // Going to a part you closed by hand is asking to see it.
+                      choose(e.id, undefined);
                       // Only get out of the way where the drawer covers the
                       // text; on a wide screen you navigate section to section
                       // and closing it every time is a nuisance.
                       if (!wideScreen()) setShowToc(false);
                     }}
                   >
-                    {e.open !== undefined && (
-                      <span className="rd-toc-fold" aria-hidden="true">
-                        {e.open ? '▾' : '◂'}
-                      </span>
-                    )}
                     <span>{e.text}</span>
                     <span className="rd-folio">{e.label}</span>
                   </button>

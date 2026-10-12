@@ -48,6 +48,29 @@ describe('visibleEntries', () => {
     ]);
   });
 
+  it('lets the reader close the branch they are in, or open another', () => {
+    const chosen = new Map([
+      ['eh', false],
+      ['cm', true],
+    ]);
+    expect(visibleEntries(chatamSofer, 'eh-2-1', chosen).map((e) => [e.id, e.open])).toEqual([
+      ['oc', false],
+      ['eh', false],
+      ['cm', true],
+      ['cm1', undefined],
+    ]);
+  });
+
+  it('keeps a part closed by hand closed once the reader moves on', () => {
+    const chosen = new Map([['oc', false]]);
+    expect(visibleEntries(chatamSofer, 'cm1', chosen).map((e) => [e.id, e.open])).toEqual([
+      ['oc', false],
+      ['eh', false],
+      ['cm', true],
+      ['cm1', undefined],
+    ]);
+  });
+
   it('leaves a book with one level as the flat list it was', () => {
     const flat = [entry('a', 'סימן א'), entry('b', 'סימן ב'), entry('c', 'סימן ג')];
     expect(visibleEntries(flat, 'b').map((e) => [e.id, e.depth, e.open])).toEqual([

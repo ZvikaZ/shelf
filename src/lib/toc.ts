@@ -57,8 +57,16 @@ export interface VisibleEntry extends TocEntry {
  * part from א again, so the full list repeats every number five times and
  * runs to a thousand lines; folded, it is the five parts plus where you are.
  * A book with a single level of headings is shown whole, as before.
+ *
+ * `chosen` holds what the reader folded or unfolded by hand, which stands
+ * wherever they go next; anything else is open exactly when it holds the
+ * active entry.
  */
-export function visibleEntries(entries: TocEntry[], activeId: string | null): VisibleEntry[] {
+export function visibleEntries(
+  entries: TocEntry[],
+  activeId: string | null,
+  chosen: ReadonlyMap<string, boolean> = new Map(),
+): VisibleEntry[] {
   const level = (e: TocEntry) => e.level ?? 0;
   // Each entry's parent is the nearest earlier entry at a shallower level.
   const parents: number[] = [];
@@ -73,15 +81,18 @@ export function visibleEntries(entries: TocEntry[], activeId: string | null): Vi
   const onPath = new Set<number>();
   for (let i = entries.findIndex((e) => e.id === activeId); i >= 0; i = parents[i]) onPath.add(i);
 
-  const depth = (i: number): number => (parents[i] < 0 ? 0 : depth(parents[i]) + 1);
+  const isOpen = (i: number) => chosen.get(entries[i].id) ?? onPath.has(i);
+  // Parents come before their children, so each one's visibility is settled
+  // by the time its children ask.
+  const shown: boolean[] = [];
+  const depths: number[] = [];
   const out: VisibleEntry[] = [];
   entries.forEach((e, i) => {
-    if (parents[i] >= 0 && !onPath.has(parents[i])) return;
-    out.push({
-      ...e,
-      depth: depth(i),
-      open: hasChildren.has(i) ? onPath.has(i) : undefined,
-    });
+    const parent = parents[i];
+    depths.push(parent < 0 ? 0 : depths[parent] + 1);
+    shown.push(parent < 0 || (shown[parent] && isOpen(parent)));
+    if (!shown[i]) return;
+    out.push({ ...e, depth: depths[i], open: hasChildren.has(i) ? isOpen(i) : undefined });
   });
   return out;
 }
