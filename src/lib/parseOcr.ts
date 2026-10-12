@@ -297,8 +297,8 @@ function findSimanim(pages: Word[][]): Map<string, Siman> {
   // 1..MAX_SIMAN_STEP past the last, or starting over near the beginning.
   const shaped = candidates.filter((c) => c.titleLike && c.n !== null);
   const opens = (c: Candidate) => (c.n as number) <= MAX_SIMAN_STEP;
-  const score = shaped.map((c) => (opens(c) ? 1 : 0));
-  const titles = shaped.map((c) => (opens(c) ? 1 : 0));
+  const score: number[] = shaped.map((c) => (opens(c) ? 1 : 0));
+  const titles: number[] = shaped.map((c) => (opens(c) ? 1 : 0));
   const prev = shaped.map(() => -1);
   const restarts = shaped.map(() => false);
   shaped.forEach((c, k) => {
