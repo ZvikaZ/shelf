@@ -1,4 +1,5 @@
 import { DICTA_ATTRIBUTION } from './attribution';
+import { hebrewNumber } from './sefariaDoc';
 import type { Block, BookDoc, Fidelity, Span } from './types';
 
 // The OCR pages are machine-generated: one <span> per word, no newlines, no
@@ -55,7 +56,14 @@ export function blockText(block: Block): string {
 }
 
 /** Longer bold runs are emphasis on a quoted passage, not a section title. */
-const MAX_HEADING_WORDS = 12;
+const MAX_HEADING_WORDS = 40;
+
+/**
+ * Past this a title reads as a paragraph in the contents. Some books open each
+ * sermon with a dedication (who preached it, where, on what date) rather than
+ * a name; those are numbered instead, the way Sefaria numbers its דרוש א, ב.
+ */
+const MAX_CONTENTS_WORDS = 12;
 
 /** A run of punctuation is OCR noise, not a section title. */
 const HAS_LETTER = /\p{L}/u;
@@ -94,9 +102,16 @@ export function buildDoc(pages: { name: string; html: string }[]): BookDoc {
       const startsPara = w.classes.has('marked-paragraph');
 
       if (w.classes.has(headingClass)) {
-        // Measure the whole run before deciding what it is.
-        let end = i;
-        while (end < ws.length && ws[end].classes.has(headingClass)) end++;
+        // Measure the whole run before deciding what it is. A paragraph mark
+        // ends it even mid-run: a title can run straight into a paragraph that
+        // opens in bold, and the mark is all that separates the two.
+        let end = i + 1;
+        while (
+          end < ws.length &&
+          ws[end].classes.has(headingClass) &&
+          !ws[end].classes.has('marked-paragraph')
+        )
+          end++;
         const run = ws.slice(i, end);
 
         // A section title is delimited on its RIGHT by a paragraph break. That
@@ -141,10 +156,40 @@ export function buildDoc(pages: { name: string; html: string }[]): BookDoc {
   flush();
 
   return {
-    blocks,
+    blocks: numberLongTitles(blocks),
     pageCount: pages.length,
     fidelity,
     citation: 'דף',
     attribution: DICTA_ATTRIBUTION,
   };
+}
+
+/**
+ * A book that routinely dedicates its sermons instead of naming them gets
+ * numbered sections, each title kept in bold as the section's opening line; a
+ * contents that mixes letters with prose is harder to scan than either. In a
+ * book whose titles are short, a lone long one is more likely a bold passage,
+ * so it stays text — renumbering every well-named section for its sake would
+ * lose more than it gains.
+ */
+const NUMBER_WHEN_LONG_SHARE = 0.1;
+
+function numberLongTitles(blocks: Block[]): Block[] {
+  const isLong = (b: Block) =>
+    b.kind === 'heading' && blockText(b).split(/\s+/).length > MAX_CONTENTS_WORDS;
+  const headings = blocks.filter((b) => b.kind === 'heading').length;
+  const long = blocks.filter(isLong).length;
+  if (long === 0) return blocks;
+  const numbered = long / headings > NUMBER_WHEN_LONG_SHARE;
+  const asText = (b: Block): Block => ({
+    kind: 'para',
+    page: b.page,
+    spans: [{ text: blockText(b), bold: true }],
+  });
+  let n = 0;
+  return blocks.flatMap((b) => {
+    if (b.kind !== 'heading') return [b];
+    if (numbered) return [{ ...b, spans: [{ text: hebrewNumber(++n), bold: false }] }, asText(b)];
+    return isLong(b) ? [asText(b)] : [b];
+  });
 }

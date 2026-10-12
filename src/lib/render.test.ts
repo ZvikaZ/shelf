@@ -132,6 +132,76 @@ describe('OCR parsing', () => {
     expect(marked.blocks[1].kind).toBe('para');
   });
 
+  it('ends a bold title where the next paragraph opens in bold', () => {
+    // Yaarot Devash: the sermon title runs straight into the sermon's own bold
+    // opening words, and only the paragraph mark tells the two apart.
+    const bold = (w: string, cls = 'bold') => `<span class="${cls}">${w}</span><span> </span>`;
+    const d = buildDoc([
+      {
+        name: 'yd-045__ocr_data.html',
+        html:
+          '<span class="marked-paragraph">אמן:</span><span> </span>' +
+          ['ת"מ', 'מ"ש', 'ברבים', 'הגאון', 'הנ"ל', 'בחודש', 'אלול', 'תקה"ל', 'בק"ק', 'מיץ', 'יע"א:']
+            .map((w) => bold(w))
+            .join('') +
+          bold('המלך', 'bold marked-paragraph') +
+          bold('דוד') +
+          '<span>בהתפללו</span>',
+      },
+    ]);
+    expect(d.blocks.map((b) => [b.kind, blockText(b)])).toEqual([
+      ['para', 'אמן:'],
+      ['heading', 'ת"מ מ"ש ברבים הגאון הנ"ל בחודש אלול תקה"ל בק"ק מיץ יע"א:'],
+      ['para', 'המלך דוד בהתפללו'],
+    ]);
+  });
+
+  describe('titles too long for the contents', () => {
+    const bold = (w: string, cls = 'bold') => `<span class="${cls}">${w}</span><span> </span>`;
+    const page = (name: string, title: string[]) => ({
+      name,
+      html:
+        title.map((w) => bold(w)).join('') +
+        '<span class="marked-paragraph">גוף</span><span> </span><span>הדרוש</span>',
+    });
+    const long = 'אלה הדרשות אשר דרש הגאון ז"ל בהיותו על מכון שבתו בגק"ק אה"ו ולא נאמר בו זמן מהשנה'.split(' ');
+
+    it('numbers every section, keeping each title as its opening line', () => {
+      const d = buildDoc([page('l-001__ocr_data.html', ['ת"מ', 'בק"ק', 'מיץ']), page('l-002__ocr_data.html', long)]);
+      expect(d.blocks.map((b) => [b.kind, blockText(b)])).toEqual([
+        ['heading', 'א'],
+        ['para', 'ת"מ בק"ק מיץ'],
+        ['para', 'גוף הדרוש'],
+        ['heading', 'ב'],
+        ['para', long.join(' ')],
+        ['para', 'גוף הדרוש'],
+      ]);
+      expect(d.blocks[4].spans.every((s) => s.bold)).toBe(true);
+    });
+
+    it('keeps a stray long title as text rather than renumbering a well-titled book', () => {
+      const short = Array.from({ length: 10 }, (_, i) =>
+        page(`r-${String(i + 1).padStart(3, '0')}__ocr_data.html`, ['סימן', String(i + 1)]),
+      );
+      const d = buildDoc([...short, page('r-011__ocr_data.html', long)]);
+      const headings = d.blocks.filter((b) => b.kind === 'heading').map(blockText);
+      expect(headings).toEqual(Array.from({ length: 10 }, (_, i) => `סימן ${i + 1}`));
+      expect(d.blocks.slice(-2).map((b) => [b.kind, blockText(b)])).toEqual([
+        ['para', long.join(' ')],
+        ['para', 'גוף הדרוש'],
+      ]);
+      expect(d.blocks.at(-2)!.spans.every((s) => s.bold)).toBe(true);
+    });
+
+    it('leaves short titles alone', () => {
+      const d = buildDoc([page('s-001__ocr_data.html', ['סימן', 'א'])]);
+      expect(d.blocks.map((b) => [b.kind, blockText(b)])).toEqual([
+        ['heading', 'סימן א'],
+        ['para', 'גוף הדרוש'],
+      ]);
+    });
+  });
+
   it('decodes html entities', () => {
     const d = buildDoc([{ name: 'z-001__ocr_data.html', html: '<span>a&amp;b&#39;c</span>' }]);
     expect(blockText(d.blocks[0])).toBe("a&b'c");
@@ -149,8 +219,19 @@ describe('OCR parsing', () => {
 
 describe('chapters', () => {
   it('opens a front-matter chapter for text before the first heading', () => {
-    const chapters = chapterise(alfeiMenashe, doc);
+    const chapters = chapterise(
+      alfeiMenashe,
+      makeDoc({
+        fidelity: 'bold',
+        blocks: [
+          { kind: 'para', page: 1, spans: [{ text: 'הקדמה בלי כותרת', bold: false }] },
+          { kind: 'heading', page: 2, spans: [{ text: 'סימן א', bold: false }] },
+          { kind: 'para', page: 2, spans: [{ text: 'גוף', bold: false }] },
+        ],
+      }),
+    );
     expect(chapters[0].title).toBe(alfeiMenashe.title);
+    expect(chapters[1].title).toBe('סימן א');
   });
 
   it('always yields at least one chapter, even for an empty book', () => {
