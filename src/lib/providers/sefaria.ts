@@ -40,6 +40,8 @@ interface SchemaNode {
   titles?: { lang: string; text: string; primary?: boolean }[];
   /** A handful of nodes point at a reusable title instead of carrying their own. */
   sharedTitle?: string;
+  /** The nameless child holding a branch's own text, beside its titled siblings. */
+  default?: boolean;
   nodes?: SchemaNode[];
   depth?: number;
 }
@@ -92,31 +94,37 @@ interface TextResponse {
  * titles join with commas to form the ref, exactly as they appear in a
  * citation (`Pesach Haggadah, Magid, Ha Lachma Anya`).
  */
-async function leafRefs(
+export async function leafRefs(
   node: SchemaNode,
   path: string[] = [],
+  parentHeTitle?: string,
 ): Promise<{ ref: string; heTitle?: string }[]> {
+  // A `default` child is its parent's own text: it adds nothing to the ref and
+  // borrows the parent's title. Its key, literally "default", is not a name.
+  if (node.default) {
+    return node.nodes?.length
+      ? (await Promise.all(node.nodes.map((child) => leafRefs(child, path, parentHeTitle)))).flat()
+      : [{ ref: path.join(', '), heTitle: parentHeTitle }];
+  }
   const ownTitle = titleIn(node, 'en') ?? node.key ?? '';
   const here = [...path, ownTitle].filter(Boolean);
-  if (!node.nodes?.length) {
-    // Most schema nodes carry their own `titles`, but some (the Koren
-    // Siddur's "Ushpizin", "Tefillin"...) instead point at a shared term via
-    // `sharedTitle` and have no inline title of their own; `titleIn` sees
-    // nothing in either language for those, so the term is resolved
-    // separately. Falling all the way back to the English key/title (rather
-    // than leaving heTitle blank) keeps the leaf "named" — see
-    // buildSefariaDoc's `named` — even in the rare case a term fails to
-    // resolve too: a blank heTitle makes the whole leaf look unnamed and
-    // floods the reader's contents with a numbered "פסקה 1", "פסקה 2"...
-    // heading per paragraph instead of the one heading the section actually
-    // has.
-    const heTitle =
-      titleIn(node, 'he') ??
-      (node.sharedTitle ? await termHebrew(node.sharedTitle) : undefined) ??
-      (ownTitle || undefined);
-    return [{ ref: here.join(', '), heTitle }];
-  }
-  const children = await Promise.all(node.nodes.map((child) => leafRefs(child, here)));
+  // Most schema nodes carry their own `titles`, but some (the Koren
+  // Siddur's "Ushpizin", "Tefillin"...) instead point at a shared term via
+  // `sharedTitle` and have no inline title of their own; `titleIn` sees
+  // nothing in either language for those, so the term is resolved
+  // separately. Falling all the way back to the English key/title (rather
+  // than leaving heTitle blank) keeps the leaf "named" — see
+  // buildSefariaDoc's `named` — even in the rare case a term fails to
+  // resolve too: a blank heTitle makes the whole leaf look unnamed and
+  // floods the reader's contents with a numbered "פסקה 1", "פסקה 2"...
+  // heading per paragraph instead of the one heading the section actually
+  // has.
+  const heTitle =
+    titleIn(node, 'he') ??
+    (node.sharedTitle ? await termHebrew(node.sharedTitle) : undefined) ??
+    (ownTitle || undefined);
+  if (!node.nodes?.length) return [{ ref: here.join(', '), heTitle }];
+  const children = await Promise.all(node.nodes.map((child) => leafRefs(child, here, heTitle)));
   return children.flat();
 }
 
