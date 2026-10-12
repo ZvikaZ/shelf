@@ -8,6 +8,7 @@ import { obfuscate } from './docxFont';
 import { buildEpub, chapterise } from './epub';
 import { pagesFromZip } from './fetchBook';
 import { blockText, buildDoc } from './parseOcr';
+import { hebrewNumber } from './sefariaDoc';
 import { shouldIncludeToc, tocEntries } from './toc';
 import type { BookDoc } from './types';
 
@@ -132,6 +133,74 @@ describe('OCR parsing', () => {
       ['para', 'שנים'],
       ['para', 'שלשה'],
     ]);
+  });
+
+  describe('numbered simanim in a book with no structure', () => {
+    // Avnei Nezer YD: no paragraph marks, so its only structure is the text's
+    // own "סימן N" — among hundreds of "סימן אחד" and citations to other books.
+    const spans = (text: string, cls = '') =>
+      text
+        .split('|')
+        .map((t) => `<span${cls ? ` class="${cls}"` : ''}>${t}</span><span> </span>`)
+        .join('');
+    const book = buildDoc([
+      { name: 'n-001__ocr_data.html', html: spans('סימן|א|שאלה.|נשחט|רובו|של|סימן|אחד.|הק\'|אברהם.|סימן|ב|ב"ה|יום') },
+      // A title in one OCR box, a citation, and a stray heading-class word.
+      { name: 'n-002__ocr_data.html', html: spans('סימן ג|כמבואר|בש"ך|סימן|קי"ט|וצ"ע:') + spans('עם', 'heading') },
+      // ד is misread, but it sits where a title sits: right after a colon.
+      { name: 'n-003__ocr_data.html', html: spans('סימן|שדמ|א)|ראוי|לבאר.|סימן|ה|ב"ה|והנה') },
+      { name: 'n-004__ocr_data.html', html: spans('דבריו:|סימן|ו|שלום|לכבוד') },
+    ]);
+    const headings = book.blocks.filter((b) => b.kind === 'heading').map(blockText);
+
+    it('heads each siman by its place in the sequence', () => {
+      expect(headings).toEqual(['סימן א', 'סימן ב', 'סימן ג', 'סימן ד', 'סימן ה', 'סימן ו']);
+    });
+
+    it('keeps the text around a title where it was', () => {
+      const text = book.blocks.map(blockText).join(' | ');
+      expect(text).toContain('הק\' אברהם. | סימן ב | ב"ה יום');
+      expect(text).toContain('סימן ד | א) ראוי לבאר.');
+      expect(text).toContain('בש"ך סימן קי"ט');
+    });
+
+    it('prefers a bold or abbreviated title to a citation of the same number', () => {
+      // Be'er Yitzchak heads its responsa `סי' א` in bold, and later cites
+      // `בסוף סימן א' לעיל` — a plain citation that must not take the title's place.
+      const b = buildDoc([
+        { name: 'b-001__ocr_data.html', html: spans('באר|יצחק') + spans("סי'|א", 'bold') + spans('שאלה|באחד|כנ"ל:') + spans("סי'|ב'", 'bold') + spans('בענין') },
+        { name: 'b-002__ocr_data.html', html: spans('כמו|שכתבתי|בסוף|סימן|א\'|לעיל.|סימן|ג|אל|כבוד.|סימן|ד|שאלה.|סימן|ה|ונחזור') },
+        // Past the last title, a citation a few numbers on (Tzemach Tzedek's
+        // `סי' צ"ו` after its last title, צג).
+        { name: 'b-003__ocr_data.html', html: spans('ובספר|יראים|סי\'|ח\'|והיש"ש') },
+      ]);
+      const titles = b.blocks.filter((x) => x.kind === 'heading');
+      expect(titles.map(blockText)).toEqual(['סימן א', 'סימן ב', 'סימן ג', 'סימן ד', 'סימן ה']);
+      expect(titles[0].page).toBe(1);
+      expect(b.blocks.map(blockText).join(' | ')).toContain("בסוף סימן א' לעיל.");
+    });
+
+    it('starts a new part where the numbering starts over', () => {
+      // Yeshuot Malko numbers 1–51, then starts again from ב (its א missing).
+      const run = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, k) => `שלום.|סימן|${hebrewNumber(from + k)}|ב"ה`).join('|');
+      const parts = buildDoc([
+        { name: 'y-001__ocr_data.html', html: spans(run(1, 7)) },
+        { name: 'y-002__ocr_data.html', html: spans('כמבואר|בסוף|סימן|ב|לעיל') },
+        { name: 'y-003__ocr_data.html', html: spans(run(2, 6)) },
+      ]);
+      expect(parts.blocks.filter((b) => b.kind === 'heading').map((b) => [b.level, blockText(b)])).toEqual([
+        [2, 'חלק א'],
+        ...Array.from({ length: 7 }, (_, k) => [3, `סימן ${hebrewNumber(k + 1)}`]),
+        [2, 'חלק ב'],
+        ...Array.from({ length: 5 }, (_, k) => [3, `סימן ${hebrewNumber(k + 2)}`]),
+      ]);
+    });
+
+    it('trusts no chain too short to be a sequence', () => {
+      const one = buildDoc([{ name: 'o-001__ocr_data.html', html: spans('מוחקין|אותו|סימן|ע"מ|לתקן') }]);
+      expect(one.blocks.every((b) => b.kind === 'para')).toBe(true);
+    });
   });
 
   it('uses the explicit heading class when a book provides one', () => {
