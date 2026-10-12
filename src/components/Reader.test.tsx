@@ -264,6 +264,38 @@ describe('reader navigation and tools', () => {
     expect(front.textContent).toMatch(/סריקה|זיהוי|OCR/);
   });
 
+  it('folds a book in parts to the part being read, and names it in the bar', async () => {
+    // Responsa Chatam Sofer numbers each part's responsa from א again; a flat
+    // contents lists "תשובה א" once per part with nothing to tell them apart.
+    const heading = (text: string, level: number, page: number) => ({
+      kind: 'heading' as const,
+      level,
+      page,
+      label: String(page),
+      spans: [{ text, bold: false }],
+    });
+    getDoc.mockResolvedValue({
+      ...doc,
+      citation: undefined,
+      blocks: [
+        heading('אורח חיים', 2, 1),
+        heading('תשובה א', 3, 2),
+        { kind: 'para', page: 2, label: 'א:א', spans: [{ text: 'הנה כל', bold: false }] },
+        heading('יורה דעה', 2, 3),
+        heading('תשובה ב', 3, 4),
+        { kind: 'para', page: 4, label: 'ב:א', spans: [{ text: 'עוד', bold: false }] },
+      ],
+    } satisfies BookDoc);
+    await open();
+
+    const toc = screen.getByRole('navigation', { name: 'תוכן העניינים' });
+    expect(within(toc).getByText('אורח חיים')).toBeInTheDocument();
+    expect(within(toc).getByText('תשובה א')).toBeInTheDocument();
+    expect(within(toc).getByText('יורה דעה')).toBeInTheDocument();
+    expect(within(toc).queryByText('תשובה ב')).not.toBeInTheDocument();
+    expect(screen.getByText(/^אורח חיים · /)).toBeInTheDocument();
+  });
+
   it('shows which folio is on screen', async () => {
     await open();
     expect(screen.getByText(/^דף /)).toBeInTheDocument();

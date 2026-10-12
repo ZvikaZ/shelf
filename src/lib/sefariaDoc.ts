@@ -290,20 +290,17 @@ interface Cursor {
  *
  * Depth varies across the library — 2 for `Chapter/Verse`, 3 for
  * `Daf/Line/Comment` — so this recurses on the array rather than assuming a
- * shape. Only the outermost level becomes a heading: below that the numbering
- * is dense enough that a heading per verse would drown the text.
- *
- * `numberSections` is off for a *flat* named leaf of a complex book — one
- * whose outermost level already is its paragraphs, where numbering them
- * would bury the section's one real heading (see the call site in
- * `buildSefariaDoc`, which is what actually decides this per leaf).
+ * shape. `headed` is how many of the outer levels become headings, each one
+ * level deeper than the last; below them the numbering is dense enough that a
+ * heading per verse would drown the text. The call site in `buildSefariaDoc`
+ * decides it per leaf.
  */
 function walk(
   node: JaggedText,
   path: number[],
   text: TextNode,
   cur: Cursor,
-  numberSections: boolean,
+  headed: number,
   sectionNames: Record<string, string>,
   numeral: Numeral,
 ): void {
@@ -317,30 +314,31 @@ function walk(
   node.forEach((child, i) => {
     if (isEmpty(child)) return;
     const next = [...path, i];
-    if (numberSections && next.length === 1 && node.length > 1) {
+    if (next.length <= headed && node.length > 1) {
       cur.slot += 1;
       cur.blocks.push({
         kind: 'heading',
-        level: 3,
-        spans: [{ text: sectionTitle(text, i, sectionNames, numeral), bold: false }],
+        level: 2 + next.length,
+        spans: [{ text: sectionTitle(text, path.length, i, sectionNames, numeral), bold: false }],
         page: cur.slot,
         label: labelFor(next, text, numeral),
       });
     }
-    walk(child, next, text, cur, numberSections, sectionNames, numeral);
+    walk(child, next, text, cur, headed, sectionNames, numeral);
   });
 }
 
 /** e.g. `פרק ג` — the section name in Hebrew, with its Hebrew number. */
 function sectionTitle(
   text: TextNode,
+  depth: number,
   index: number,
   sectionNames: Record<string, string>,
   numeral: Numeral,
 ): string {
-  const raw = sectionKey(text.sectionNames[0] ?? '');
+  const raw = sectionKey(text.sectionNames[depth] ?? '');
   const name = sectionNames[raw] ?? raw;
-  return `${name} ${address(text.addressTypes[0] ?? 'Integer', index, numeral)}`.trim();
+  return `${name} ${address(text.addressTypes[depth] ?? 'Integer', index, numeral)}`.trim();
 }
 
 /** The citation printed in the margin, e.g. `ג׳:י״ב`. */
@@ -398,6 +396,8 @@ export function buildSefariaDoc(
       cur.slot += 1;
       cur.blocks.push({
         kind: 'heading',
+        // A part of the book, so its own sections nest beneath it.
+        level: 2,
         spans: [{ text: node.heTitle as string, bold: false }],
         page: cur.slot,
         // No `label`: a named section's title IS its citation — there is no
@@ -417,7 +417,18 @@ export function buildSefariaDoc(
     // numbers collapses the whole section into one undifferentiated block
     // of text. Only suppress numbering when the leaf is both named and flat.
     const numberSections = !(named && node.sectionNames.length <= 1);
-    walk(node.text, [], node, cur, numberSections, sectionNames, numeral);
+    // Where the innermost level is plain paragraphs, the level just above it
+    // is a unit of writing in its own right — Even HaEzer's responsa, under
+    // its חלק א and חלק ב — and needs a heading too, or a whole חלק runs on as
+    // one section. Elsewhere (a commentary's Comment, a Yerushalmi Segment)
+    // that level is a line or a verse, and stays unheaded.
+    const depth = node.sectionNames.length;
+    const headed = !numberSections
+      ? 0
+      : depth >= 3 && sectionKey(node.sectionNames[depth - 1]) === 'Paragraph'
+        ? 2
+        : 1;
+    walk(node.text, [], node, cur, headed, sectionNames, numeral);
   }
 
   return {

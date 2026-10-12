@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildSefariaDoc,
+  HE_SECTION,
   hebrewNumber,
   spansFromHtml,
   talmudAddress,
@@ -244,6 +245,53 @@ describe('a complex book', () => {
       'פרק א',
       'פרק ב',
     ]);
+  });
+});
+
+describe('a book in several parts', () => {
+  // Responsa Chatam Sofer: each part numbers its own responsa from א, and
+  // Even HaEzer adds a level — חלק, then תשובה, then the paragraphs.
+  const names = { ...HE_SECTION, Teshuva: 'תשובה' };
+  const doc = buildSefariaDoc(
+    [
+      {
+        heTitle: 'אורח חיים',
+        sectionNames: ['Teshuva', 'Paragraph'],
+        addressTypes: ['Integer', 'Integer'],
+        text: [['א1'], ['ב1']],
+      },
+      {
+        heTitle: 'אבן העזר',
+        sectionNames: ['Section', 'Teshuva', 'Paragraph'],
+        addressTypes: ['Integer', 'Integer', 'Integer'],
+        text: [[['א1', 'א2'], ['ב1']], [['ג1'], ['ד1']]],
+      },
+    ],
+    sefariaAttribution({}),
+    names,
+  );
+  const headings = doc.blocks
+    .filter((b) => b.kind === 'heading')
+    .map((b) => [b.level, blockText(b)]);
+
+  it('nests each part, and every responsum under it, a level deeper', () => {
+    expect(headings).toEqual([
+      [2, 'אורח חיים'],
+      [3, 'תשובה א'],
+      [3, 'תשובה ב'],
+      [2, 'אבן העזר'],
+      [3, 'חלק א'],
+      [4, 'תשובה א'],
+      [4, 'תשובה ב'],
+      [3, 'חלק ב'],
+      [4, 'תשובה א'],
+      [4, 'תשובה ב'],
+    ]);
+  });
+
+  it('still heads only the outermost level where the innermost is not paragraphs', () => {
+    const talmud = buildSefariaDoc([nodeFrom('sefaria-depth3')], sefariaAttribution({}));
+    expect(talmud.blocks.filter((b) => b.kind === 'heading').every((b) => b.level === 3)).toBe(true);
   });
 });
 

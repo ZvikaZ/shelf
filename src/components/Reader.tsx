@@ -5,7 +5,7 @@ import { FORMAT_HINT, FORMAT_LABEL } from '../lib/formats';
 import { providerLabel } from '../lib/providers/registry';
 import { blockText } from '../lib/parseOcr';
 import { hasCantillation } from '../lib/cantillation';
-import { tocEntries } from '../lib/toc';
+import { currentPart, tocEntries, visibleEntries } from '../lib/toc';
 import {
   blockLabel,
   verseMark,
@@ -298,8 +298,16 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
 
   const exportable = doc?.attribution.license.exportable ?? true;
   const currentBlock = doc?.blocks[current];
+  // A responsa collection's `קכג:ה` could be in any of its parts, so the bar
+  // says which.
   const currentFolio =
-    currentBlock && [doc?.citation, blockLabel(currentBlock)].filter(Boolean).join(' ');
+    currentBlock &&
+    [
+      doc && currentPart(doc, current),
+      [doc?.citation, blockLabel(currentBlock)].filter(Boolean).join(' '),
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   // The section the reader is inside: the last heading at or above this block.
   const activeEntry = useMemo(() => {
@@ -310,6 +318,8 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     }
     return id;
   }, [doc, current]);
+
+  const shownEntries = useMemo(() => visibleEntries(entries, activeEntry), [entries, activeEntry]);
 
   // Keep the section you are in visible in the contents. `nearest` moves the
   // list only when the entry is actually off-screen, so reading down the page
@@ -453,15 +463,17 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
               סגירת התוכן
             </button>
             <ol>
-              {entries.map((e) => (
+              {shownEntries.map((e) => (
                 <li
                   key={e.id}
                   ref={e.id === activeEntry ? activeRef : undefined}
                   className={e.id === activeEntry ? 'rd-toc-active' : undefined}
+                  style={e.depth ? { paddingInlineStart: `${e.depth * 14}px` } : undefined}
                 >
                   <button
                     type="button"
                     aria-current={e.id === activeEntry ? 'true' : undefined}
+                    aria-expanded={e.open}
                     onClick={() => {
                       const at = doc?.blocks.findIndex(
                         (b, bi) => b.kind === 'heading' && `h${bi}` === e.id,
@@ -473,6 +485,11 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
                       if (!wideScreen()) setShowToc(false);
                     }}
                   >
+                    {e.open !== undefined && (
+                      <span className="rd-toc-fold" aria-hidden="true">
+                        {e.open ? '▾' : '◂'}
+                      </span>
+                    )}
                     <span>{e.text}</span>
                     <span className="rd-folio">{e.label}</span>
                   </button>
