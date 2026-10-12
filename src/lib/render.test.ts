@@ -117,6 +117,23 @@ describe('OCR parsing', () => {
     expect(blockText(bare.blocks[0])).toBe('אחד שנים');
   });
 
+  it('falls back to page units when paragraph marks are too scarce to rely on', () => {
+    // Avnei Nezer YD: 539 pages, not one paragraph mark, but a stray heading
+    // word on one page — enough to skip the bare-book fallback above and run
+    // the whole book into a single 2.4-million-character paragraph.
+    const sparse = buildDoc([
+      { name: 'a-001__ocr_data.html', html: '<span class="heading">סימן</span><span> </span><span>אחד</span>' },
+      { name: 'a-002__ocr_data.html', html: '<span>שנים</span>' },
+      { name: 'a-003__ocr_data.html', html: '<span>שלשה</span>' },
+    ]);
+    expect(sparse.blocks.map((b) => [b.kind, blockText(b)])).toEqual([
+      ['heading', 'סימן'],
+      ['para', 'אחד'],
+      ['para', 'שנים'],
+      ['para', 'שלשה'],
+    ]);
+  });
+
   it('uses the explicit heading class when a book provides one', () => {
     const marked = buildDoc([
       {

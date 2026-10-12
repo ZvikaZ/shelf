@@ -87,6 +87,14 @@ export function buildDoc(pages: { name: string; html: string }[]): BookDoc {
   const has = (cls: string) => parsed.some((p) => p.words.some((w) => w.classes.has(cls)));
   const fidelity: Fidelity = has('heading') ? 'heading' : has('bold') ? 'bold' : 'pages';
   const headingClass = fidelity === 'heading' ? 'heading' : 'bold';
+  // A marked book carries one paragraph mark per page or more; an unmarked one
+  // has a stray handful at most. Below one every other page they cannot be
+  // what closes a paragraph, so the page has to be.
+  const marks = parsed.reduce(
+    (n, p) => n + p.words.filter((w) => w.classes.has('marked-paragraph')).length,
+    0,
+  );
+  const pageIsUnit = marks < parsed.length / 2;
 
   const blocks: Block[] = [];
   let open: Block | null = null;
@@ -149,9 +157,9 @@ export function buildDoc(pages: { name: string; html: string }[]): BookDoc {
       appendSpan(open.spans, w.text, false);
     }
     // Paragraphs run across page boundaries, so we normally keep the block open
-    // and let the next `marked-paragraph` close it. With no markup at all there
-    // is nothing to close it, so the page itself becomes the unit.
-    if (fidelity === 'pages') flush();
+    // and let the next `marked-paragraph` close it. With too few marks there is
+    // nothing to close it, so the page itself becomes the unit.
+    if (pageIsUnit) flush();
   }
   flush();
 
