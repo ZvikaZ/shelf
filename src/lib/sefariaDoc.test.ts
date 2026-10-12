@@ -275,3 +275,24 @@ describe('no markup survives into the text, in any fixture', () => {
     });
   }
 });
+
+describe('a section name with stray punctuation', () => {
+  // BePardes HaChasidut VeHakabbalah names one section's levels `[Chapter`.
+  const doc = buildSefariaDoc(
+    [
+      {
+        heTitle: 'יסודות החסידות',
+        sectionNames: ['[Chapter', 'Paragraph'],
+        addressTypes: ['Integer', 'Integer'],
+        text: [['א'], ['ב']],
+      },
+    ],
+    sefariaAttribution({}),
+  );
+
+  it('still reads it as the name it means', () => {
+    const headings = doc.blocks.filter((b) => b.kind === 'heading').map(blockText);
+    expect(headings).toContain('פרק א');
+    expect(headings.join(' ')).not.toMatch(/Chapter/);
+  });
+});

@@ -1,5 +1,5 @@
 import { combinedLicense, sefariaAttribution } from '../attribution';
-import { buildSefariaDoc, HE_SECTION, type TextNode } from '../sefariaDoc';
+import { buildSefariaDoc, HE_SECTION, sectionKey, type TextNode } from '../sefariaDoc';
 import { weaveCommentary } from '../weave';
 import type { BookDoc } from '../types';
 import type { LoadBook } from './types';
@@ -189,7 +189,9 @@ async function fetchNode(ref: string, heTitle?: string): Promise<TextNode | null
  * way a `sharedTitle` is, and merged over the static table.
  */
 async function resolveSectionNames(nodes: TextNode[]): Promise<Record<string, string>> {
-  const unknown = new Set(nodes.flatMap((n) => n.sectionNames).filter((n) => !(n in HE_SECTION)));
+  const unknown = new Set(
+    nodes.flatMap((n) => n.sectionNames.map(sectionKey)).filter((n) => !(n in HE_SECTION)),
+  );
   if (unknown.size === 0) return HE_SECTION;
   const resolved = await Promise.all([...unknown].map(async (n) => [n, await termHebrew(n)] as const));
   const merged = { ...HE_SECTION };

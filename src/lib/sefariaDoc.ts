@@ -338,8 +338,8 @@ function sectionTitle(
   sectionNames: Record<string, string>,
   numeral: Numeral,
 ): string {
-  const raw = text.sectionNames[0];
-  const name = sectionNames[raw] ?? raw ?? '';
+  const raw = sectionKey(text.sectionNames[0] ?? '');
+  const name = sectionNames[raw] ?? raw;
   return `${name} ${address(text.addressTypes[0] ?? 'Integer', index, numeral)}`.trim();
 }
 
@@ -348,6 +348,15 @@ function labelFor(path: number[], text: TextNode, numeral: Numeral): string {
   return path
     .map((i, depth) => address(text.addressTypes[depth] ?? 'Integer', i, numeral))
     .join(':');
+}
+
+/**
+ * A section name as the lookup tables spell it. Sefaria's names are typed by
+ * hand and the odd one carries a stray bracket (`[Chapter`), which would
+ * otherwise miss the table and be printed in English.
+ */
+export function sectionKey(raw: string): string {
+  return raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 }
 
 export const HE_SECTION: Record<string, string> = {
